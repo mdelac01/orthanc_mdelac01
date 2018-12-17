@@ -53,7 +53,7 @@ include(${CMAKE_SOURCE_DIR}/Resources/CMake/OrthancFrameworkConfiguration.cmake)
 #####################################################################
 
 set(ORTHANC_SERVER_SOURCES
-  OrthancServer/DatabaseWrapper.cpp
+  OrthancServer/SQLiteDatabaseWrapper.cpp
   OrthancServer/DicomInstanceOrigin.cpp
   OrthancServer/DicomInstanceToStore.cpp
   OrthancServer/ExportedResource.cpp
@@ -168,13 +168,14 @@ endif()
 #####################################################################
 
 set(ORTHANC_EMBEDDED_FILES
-  PREPARE_DATABASE            ${CMAKE_CURRENT_SOURCE_DIR}/OrthancServer/PrepareDatabase.sql
-  UPGRADE_DATABASE_3_TO_4     ${CMAKE_CURRENT_SOURCE_DIR}/OrthancServer/Upgrade3To4.sql
-  UPGRADE_DATABASE_4_TO_5     ${CMAKE_CURRENT_SOURCE_DIR}/OrthancServer/Upgrade4To5.sql
-  CONFIGURATION_SAMPLE        ${CMAKE_CURRENT_SOURCE_DIR}/Resources/Configuration.json
-  DICOM_CONFORMANCE_STATEMENT ${CMAKE_CURRENT_SOURCE_DIR}/Resources/DicomConformanceStatement.txt
-  LUA_TOOLBOX                 ${CMAKE_CURRENT_SOURCE_DIR}/Resources/Toolbox.lua
-  FONT_UBUNTU_MONO_BOLD_16    ${CMAKE_CURRENT_SOURCE_DIR}/Resources/Fonts/UbuntuMonoBold-16.json
+  PREPARE_DATABASE                ${CMAKE_CURRENT_SOURCE_DIR}/OrthancServer/PrepareDatabase.sql
+  UPGRADE_DATABASE_3_TO_4         ${CMAKE_CURRENT_SOURCE_DIR}/OrthancServer/Upgrade3To4.sql
+  UPGRADE_DATABASE_4_TO_5         ${CMAKE_CURRENT_SOURCE_DIR}/OrthancServer/Upgrade4To5.sql
+  CONFIGURATION_SAMPLE            ${CMAKE_CURRENT_SOURCE_DIR}/Resources/Configuration.json
+  DICOM_CONFORMANCE_STATEMENT     ${CMAKE_CURRENT_SOURCE_DIR}/Resources/DicomConformanceStatement.txt
+  LUA_TOOLBOX                     ${CMAKE_CURRENT_SOURCE_DIR}/Resources/Toolbox.lua
+  FONT_UBUNTU_MONO_BOLD_16        ${CMAKE_CURRENT_SOURCE_DIR}/Resources/Fonts/UbuntuMonoBold-16.json
+  INSTALL_TRACK_ATTACHMENTS_SIZE  ${CMAKE_CURRENT_SOURCE_DIR}/OrthancServer/InstallTrackAttachmentsSize.sql
   )
 
 if (STANDALONE_BUILD)

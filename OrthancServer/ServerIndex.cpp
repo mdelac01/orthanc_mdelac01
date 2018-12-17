@@ -215,7 +215,7 @@ namespace Orthanc
   {
   private:
     ServerIndex& index_;
-    std::auto_ptr<SQLite::ITransaction> transaction_;
+    std::auto_ptr<IDatabaseWrapper::ITransaction> transaction_;
     bool isCommitted_;
 
   public:
@@ -225,8 +225,6 @@ namespace Orthanc
     {
       transaction_.reset(index_.db_.StartTransaction());
       transaction_->Begin();
-
-      assert(index_.currentStorageSize_ == index_.db_.GetTotalCompressedSize());
 
       index_.listener_->StartTransaction();
     }
@@ -245,17 +243,15 @@ namespace Orthanc
     {
       if (!isCommitted_)
       {
-        transaction_->Commit();
+        int64_t delta = (static_cast<int64_t>(sizeOfAddedFiles) -
+                         static_cast<int64_t>(index_.listener_->GetSizeOfFilesToRemove()));
+
+        transaction_->Commit(delta);
 
         // We can remove the files once the SQLite transaction has
         // been successfully committed. Some files might have to be
         // deleted because of recycling.
         index_.listener_->CommitFilesToRemove();
-
-        index_.currentStorageSize_ += sizeOfAddedFiles;
-
-        assert(index_.currentStorageSize_ >= index_.listener_->GetSizeOfFilesToRemove());
-        index_.currentStorageSize_ -= index_.listener_->GetSizeOfFilesToRemove();
 
         // Send all the pending changes to the Orthanc plugins
         index_.listener_->CommitChanges();
@@ -549,8 +545,6 @@ namespace Orthanc
   {
     listener_.reset(new Listener(context));
     db_.SetListener(*listener_);
-
-    currentStorageSize_ = db_.GetTotalCompressedSize();
 
     // Initial recycling if the parameters have changed since the last
     // execution of Orthanc
@@ -877,8 +871,7 @@ namespace Orthanc
     boost::mutex::scoped_lock lock(mutex_);
     target = Json::objectValue;
 
-    uint64_t cs = currentStorageSize_;
-    assert(cs == db_.GetTotalCompressedSize());
+    uint64_t cs = db_.GetTotalCompressedSize();
     uint64_t us = db_.GetTotalUncompressedSize();
     target["TotalDiskSize"] = boost::lexical_cast<std::string>(cs);
     target["TotalUncompressedSize"] = boost::lexical_cast<std::string>(us);
@@ -1369,10 +1362,9 @@ namespace Orthanc
   {
     if (maximumStorageSize_ != 0)
     {
-      uint64_t currentSize = currentStorageSize_ - listener_->GetSizeOfFilesToRemove();
-      assert(db_.GetTotalCompressedSize() == currentSize);
-
-      if (currentSize + instanceSize > maximumStorageSize_)
+      assert(maximumStorageSize_ >= instanceSize);
+      
+      if (db_.IsDiskSizeAbove(maximumStorageSize_ - instanceSize))
       {
         return true;
       }
