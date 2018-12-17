@@ -32,10 +32,11 @@
 
 
 #include "PrecompiledHeadersServer.h"
-#include "DatabaseWrapper.h"
+#include "SQLiteDatabaseWrapper.h"
 
 #include "../Core/DicomFormat/DicomArray.h"
 #include "../Core/Logging.h"
+#include "../Core/SQLite/Transaction.h"
 #include "EmbeddedResources.h"
 #include "ServerToolbox.h"
 
@@ -53,7 +54,7 @@ namespace Orthanc
 
     public:
       SignalFileDeleted(IDatabaseListener& listener) :
-        listener_(listener)
+      listener_(listener)
       {
       }
 
@@ -100,7 +101,7 @@ namespace Orthanc
 
     public:
       SignalResourceDeleted(IDatabaseListener& listener) :
-        listener_(listener)
+      listener_(listener)
       {
       }
 
@@ -186,10 +187,10 @@ namespace Orthanc
   }
 
 
-  void DatabaseWrapper::GetChangesInternal(std::list<ServerIndexChange>& target,
-                                           bool& done,
-                                           SQLite::Statement& s,
-                                           uint32_t maxResults)
+  void SQLiteDatabaseWrapper::GetChangesInternal(std::list<ServerIndexChange>& target,
+                                                 bool& done,
+                                                 SQLite::Statement& s,
+                                                 uint32_t maxResults)
   {
     target.clear();
 
@@ -210,10 +211,10 @@ namespace Orthanc
   }
 
 
-  void DatabaseWrapper::GetExportedResourcesInternal(std::list<ExportedResource>& target,
-                                                     bool& done,
-                                                     SQLite::Statement& s,
-                                                     uint32_t maxResults)
+  void SQLiteDatabaseWrapper::GetExportedResourcesInternal(std::list<ExportedResource>& target,
+                                                           bool& done,
+                                                           SQLite::Statement& s,
+                                                           uint32_t maxResults)
   {
     target.clear();
 
@@ -240,8 +241,8 @@ namespace Orthanc
   }
 
 
-  void DatabaseWrapper::GetChildren(std::list<std::string>& childrenPublicIds,
-                                    int64_t id)
+  void SQLiteDatabaseWrapper::GetChildren(std::list<std::string>& childrenPublicIds,
+                                          int64_t id)
   {
     SQLite::Statement s(db_, SQLITE_FROM_HERE, "SELECT publicId FROM Resources WHERE parentId=?");
     s.BindInt64(0, id);
@@ -254,7 +255,7 @@ namespace Orthanc
   }
 
 
-  void DatabaseWrapper::DeleteResource(int64_t id)
+  void SQLiteDatabaseWrapper::DeleteResource(int64_t id)
   {
     signalRemainingAncestor_->Reset();
 
@@ -271,8 +272,8 @@ namespace Orthanc
   }
 
 
-  bool DatabaseWrapper::GetParentPublicId(std::string& target,
-                                          int64_t id)
+  bool SQLiteDatabaseWrapper::GetParentPublicId(std::string& target,
+                                                int64_t id)
   {
     SQLite::Statement s(db_, SQLITE_FROM_HERE, "SELECT a.publicId FROM Resources AS a, Resources AS b "
                         "WHERE a.internalId = b.parentId AND b.internalId = ?");     
@@ -290,7 +291,7 @@ namespace Orthanc
   }
 
 
-  int64_t DatabaseWrapper::GetTableRecordCount(const std::string& table)
+  int64_t SQLiteDatabaseWrapper::GetTableRecordCount(const std::string& table)
   {
     char buf[128];
     sprintf(buf, "SELECT COUNT(*) FROM %s", table.c_str());
@@ -308,7 +309,7 @@ namespace Orthanc
   }
 
     
-  DatabaseWrapper::DatabaseWrapper(const std::string& path) : 
+  SQLiteDatabaseWrapper::SQLiteDatabaseWrapper(const std::string& path) : 
     listener_(NULL), 
     signalRemainingAncestor_(NULL),
     version_(0)
@@ -317,7 +318,7 @@ namespace Orthanc
   }
 
 
-  DatabaseWrapper::DatabaseWrapper() : 
+  SQLiteDatabaseWrapper::SQLiteDatabaseWrapper() : 
     listener_(NULL), 
     signalRemainingAncestor_(NULL),
     version_(0)
@@ -326,7 +327,7 @@ namespace Orthanc
   }
 
 
-  void DatabaseWrapper::Open()
+  void SQLiteDatabaseWrapper::Open()
   {
     db_.Execute("PRAGMA ENCODING=\"UTF-8\";");
 
@@ -370,6 +371,19 @@ namespace Orthanc
                              "Incompatible version of the Orthanc database: " + tmp);
     }
 
+    // New in Orthanc 1.5.1
+    if (version_ == 6)
+    {
+      if (!LookupGlobalProperty(tmp, GlobalProperty_GetTotalSizeIsFast) ||
+          tmp != "1")
+      {
+        LOG(INFO) << "Installing the SQLite triggers to track the size of the attachments";
+        std::string query;
+        EmbeddedResources::GetFileResource(query, EmbeddedResources::INSTALL_TRACK_ATTACHMENTS_SIZE);
+        db_.Execute(query);
+      }
+    }
+
     signalRemainingAncestor_ = new Internals::SignalRemainingAncestor;
     db_.Register(signalRemainingAncestor_);
   }
@@ -386,8 +400,8 @@ namespace Orthanc
   }
 
 
-  void DatabaseWrapper::Upgrade(unsigned int targetVersion,
-                                IStorageArea& storageArea)
+  void SQLiteDatabaseWrapper::Upgrade(unsigned int targetVersion,
+                                      IStorageArea& storageArea)
   {
     if (targetVersion != 6)
     {
@@ -437,7 +451,7 @@ namespace Orthanc
   }
 
 
-  void DatabaseWrapper::SetListener(IDatabaseListener& listener)
+  void SQLiteDatabaseWrapper::SetListener(IDatabaseListener& listener)
   {
     listener_ = &listener;
     db_.Register(new Internals::SignalFileDeleted(listener));
@@ -445,14 +459,14 @@ namespace Orthanc
   }
 
 
-  void DatabaseWrapper::ClearTable(const std::string& tableName)
+  void SQLiteDatabaseWrapper::ClearTable(const std::string& tableName)
   {
     db_.Execute("DELETE FROM " + tableName);    
   }
 
 
-  bool DatabaseWrapper::LookupParent(int64_t& parentId,
-                                     int64_t resourceId)
+  bool SQLiteDatabaseWrapper::LookupParent(int64_t& parentId,
+                                           int64_t resourceId)
   {
     SQLite::Statement s(db_, SQLITE_FROM_HERE, 
                         "SELECT parentId FROM Resources WHERE internalId=?");
@@ -475,7 +489,7 @@ namespace Orthanc
   }
 
 
-  ResourceType DatabaseWrapper::GetResourceType(int64_t resourceId)
+  ResourceType SQLiteDatabaseWrapper::GetResourceType(int64_t resourceId)
   {
     SQLite::Statement s(db_, SQLITE_FROM_HERE, 
                         "SELECT resourceType FROM Resources WHERE internalId=?");
@@ -492,7 +506,7 @@ namespace Orthanc
   }
 
 
-  std::string DatabaseWrapper::GetPublicId(int64_t resourceId)
+  std::string SQLiteDatabaseWrapper::GetPublicId(int64_t resourceId)
   {
     SQLite::Statement s(db_, SQLITE_FROM_HERE, 
                         "SELECT publicId FROM Resources WHERE internalId=?");
@@ -509,10 +523,10 @@ namespace Orthanc
   }
 
 
-  void DatabaseWrapper::GetChanges(std::list<ServerIndexChange>& target /*out*/,
-                                   bool& done /*out*/,
-                                   int64_t since,
-                                   uint32_t maxResults)
+  void SQLiteDatabaseWrapper::GetChanges(std::list<ServerIndexChange>& target /*out*/,
+                                         bool& done /*out*/,
+                                         int64_t since,
+                                         uint32_t maxResults)
   {
     SQLite::Statement s(db_, SQLITE_FROM_HERE, "SELECT * FROM Changes WHERE seq>? ORDER BY seq LIMIT ?");
     s.BindInt64(0, since);
@@ -521,7 +535,7 @@ namespace Orthanc
   }
 
 
-  void DatabaseWrapper::GetLastChange(std::list<ServerIndexChange>& target /*out*/)
+  void SQLiteDatabaseWrapper::GetLastChange(std::list<ServerIndexChange>& target /*out*/)
   {
     bool done;  // Ignored
     SQLite::Statement s(db_, SQLITE_FROM_HERE, "SELECT * FROM Changes ORDER BY seq DESC LIMIT 1");
@@ -529,8 +543,55 @@ namespace Orthanc
   }
 
 
-  void DatabaseWrapper::GetAllMetadata(std::map<MetadataType, std::string>& target,
-                                       int64_t id)
+  class SQLiteDatabaseWrapper::Transaction : public IDatabaseWrapper::ITransaction
+  {
+  private:
+    SQLiteDatabaseWrapper&              that_;
+    std::auto_ptr<SQLite::Transaction>  transaction_;
+    int64_t                             initialDiskSize_;
+
+  public:
+    Transaction(SQLiteDatabaseWrapper& that) :
+      that_(that),
+      transaction_(new SQLite::Transaction(that_.db_))
+    {
+#if defined(NDEBUG)
+      // Release mode
+      initialDiskSize_ = 0;
+#else
+      // Debug mode
+      initialDiskSize_ = static_cast<int64_t>(that_.GetTotalCompressedSize());
+#endif
+    }
+
+    virtual void Begin()
+    {
+      transaction_->Begin();
+    }
+
+    virtual void Rollback() 
+    {
+      transaction_->Rollback();
+    }
+
+    virtual void Commit(int64_t fileSizeDelta /* only used in debug */)
+    {
+      transaction_->Commit();
+
+      assert(initialDiskSize_ + fileSizeDelta >= 0 &&
+             initialDiskSize_ + fileSizeDelta == static_cast<int64_t>(that_.GetTotalCompressedSize()));
+    }
+  };
+
+
+  IDatabaseWrapper::ITransaction* SQLiteDatabaseWrapper::StartTransaction()
+  {
+    return new Transaction(*this);
+  }
+
+
+  void SQLiteDatabaseWrapper::GetAllMetadata(std::map<MetadataType, std::string>& target,
+                                             int64_t id)
   {
     target.clear();
 
@@ -545,8 +606,8 @@ namespace Orthanc
   }
 
 
-  void DatabaseWrapper::SetGlobalProperty(GlobalProperty property,
-                                          const std::string& value)
+  void SQLiteDatabaseWrapper::SetGlobalProperty(GlobalProperty property,
+                                                const std::string& value)
   {
     SQLite::Statement s(db_, SQLITE_FROM_HERE, "INSERT OR REPLACE INTO GlobalProperties VALUES(?, ?)");
     s.BindInt(0, property);
@@ -555,8 +616,8 @@ namespace Orthanc
   }
 
 
-  bool DatabaseWrapper::LookupGlobalProperty(std::string& target,
-                                             GlobalProperty property)
+  bool SQLiteDatabaseWrapper::LookupGlobalProperty(std::string& target,
+                                                   GlobalProperty property)
   {
     SQLite::Statement s(db_, SQLITE_FROM_HERE, 
                         "SELECT value FROM GlobalProperties WHERE property=?");
@@ -574,8 +635,8 @@ namespace Orthanc
   }
 
 
-  int64_t DatabaseWrapper::CreateResource(const std::string& publicId,
-                                          ResourceType type)
+  int64_t SQLiteDatabaseWrapper::CreateResource(const std::string& publicId,
+                                                ResourceType type)
   {
     SQLite::Statement s(db_, SQLITE_FROM_HERE, "INSERT INTO Resources VALUES(NULL, ?, ?, NULL)");
     s.BindInt(0, type);
@@ -585,9 +646,9 @@ namespace Orthanc
   }
 
 
-  bool DatabaseWrapper::LookupResource(int64_t& id,
-                                       ResourceType& type,
-                                       const std::string& publicId)
+  bool SQLiteDatabaseWrapper::LookupResource(int64_t& id,
+                                             ResourceType& type,
+                                             const std::string& publicId)
   {
     SQLite::Statement s(db_, SQLITE_FROM_HERE, 
                         "SELECT internalId, resourceType FROM Resources WHERE publicId=?");
@@ -610,8 +671,8 @@ namespace Orthanc
   }
 
 
-  void DatabaseWrapper::AttachChild(int64_t parent,
-                                    int64_t child)
+  void SQLiteDatabaseWrapper::AttachChild(int64_t parent,
+                                          int64_t child)
   {
     SQLite::Statement s(db_, SQLITE_FROM_HERE, "UPDATE Resources SET parentId = ? WHERE internalId = ?");
     s.BindInt64(0, parent);
@@ -620,9 +681,9 @@ namespace Orthanc
   }
 
 
-  void DatabaseWrapper::SetMetadata(int64_t id,
-                                    MetadataType type,
-                                    const std::string& value)
+  void SQLiteDatabaseWrapper::SetMetadata(int64_t id,
+                                          MetadataType type,
+                                          const std::string& value)
   {
     SQLite::Statement s(db_, SQLITE_FROM_HERE, "INSERT OR REPLACE INTO Metadata VALUES(?, ?, ?)");
     s.BindInt64(0, id);
@@ -632,8 +693,8 @@ namespace Orthanc
   }
 
 
-  void DatabaseWrapper::DeleteMetadata(int64_t id,
-                                       MetadataType type)
+  void SQLiteDatabaseWrapper::DeleteMetadata(int64_t id,
+                                             MetadataType type)
   {
     SQLite::Statement s(db_, SQLITE_FROM_HERE, "DELETE FROM Metadata WHERE id=? and type=?");
     s.BindInt64(0, id);
@@ -642,9 +703,9 @@ namespace Orthanc
   }
 
 
-  bool DatabaseWrapper::LookupMetadata(std::string& target,
-                                       int64_t id,
-                                       MetadataType type)
+  bool SQLiteDatabaseWrapper::LookupMetadata(std::string& target,
+                                             int64_t id,
+                                             MetadataType type)
   {
     SQLite::Statement s(db_, SQLITE_FROM_HERE, 
                         "SELECT value FROM Metadata WHERE id=? AND type=?");
@@ -663,8 +724,8 @@ namespace Orthanc
   }
 
 
-  void DatabaseWrapper::ListAvailableMetadata(std::list<MetadataType>& target,
-                                              int64_t id)
+  void SQLiteDatabaseWrapper::ListAvailableMetadata(std::list<MetadataType>& target,
+                                                    int64_t id)
   {
     target.clear();
 
@@ -678,8 +739,8 @@ namespace Orthanc
   }
 
 
-  void DatabaseWrapper::AddAttachment(int64_t id,
-                                      const FileInfo& attachment)
+  void SQLiteDatabaseWrapper::AddAttachment(int64_t id,
+                                            const FileInfo& attachment)
   {
     SQLite::Statement s(db_, SQLITE_FROM_HERE, "INSERT INTO AttachedFiles VALUES(?, ?, ?, ?, ?, ?, ?, ?)");
     s.BindInt64(0, id);
@@ -694,8 +755,8 @@ namespace Orthanc
   }
 
 
-  void DatabaseWrapper::DeleteAttachment(int64_t id,
-                                         FileContentType attachment)
+  void SQLiteDatabaseWrapper::DeleteAttachment(int64_t id,
+                                               FileContentType attachment)
   {
     SQLite::Statement s(db_, SQLITE_FROM_HERE, "DELETE FROM AttachedFiles WHERE id=? AND fileType=?");
     s.BindInt64(0, id);
@@ -704,8 +765,8 @@ namespace Orthanc
   }
 
 
-  void DatabaseWrapper::ListAvailableAttachments(std::list<FileContentType>& target,
-                                                 int64_t id)
+  void SQLiteDatabaseWrapper::ListAvailableAttachments(std::list<FileContentType>& target,
+                                                       int64_t id)
   {
     target.clear();
 
@@ -719,9 +780,9 @@ namespace Orthanc
     }
   }
 
-  bool DatabaseWrapper::LookupAttachment(FileInfo& attachment,
-                                         int64_t id,
-                                         FileContentType contentType)
+  bool SQLiteDatabaseWrapper::LookupAttachment(FileInfo& attachment,
+                                               int64_t id,
+                                               FileContentType contentType)
   {
     SQLite::Statement s(db_, SQLITE_FROM_HERE, 
                         "SELECT uuid, uncompressedSize, compressionType, compressedSize, "
@@ -747,7 +808,7 @@ namespace Orthanc
   }
 
 
-  void DatabaseWrapper::ClearMainDicomTags(int64_t id)
+  void SQLiteDatabaseWrapper::ClearMainDicomTags(int64_t id)
   {
     {
       SQLite::Statement s(db_, SQLITE_FROM_HERE, "DELETE FROM DicomIdentifiers WHERE id=?");
@@ -763,9 +824,9 @@ namespace Orthanc
   }
 
 
-  void DatabaseWrapper::SetMainDicomTag(int64_t id,
-                                        const DicomTag& tag,
-                                        const std::string& value)
+  void SQLiteDatabaseWrapper::SetMainDicomTag(int64_t id,
+                                              const DicomTag& tag,
+                                              const std::string& value)
   {
     SQLite::Statement s(db_, SQLITE_FROM_HERE, "INSERT INTO MainDicomTags VALUES(?, ?, ?, ?)");
     s.BindInt64(0, id);
@@ -776,9 +837,9 @@ namespace Orthanc
   }
 
 
-  void DatabaseWrapper::SetIdentifierTag(int64_t id,
-                                         const DicomTag& tag,
-                                         const std::string& value)
+  void SQLiteDatabaseWrapper::SetIdentifierTag(int64_t id,
+                                               const DicomTag& tag,
+                                               const std::string& value)
   {
     SQLite::Statement s(db_, SQLITE_FROM_HERE, "INSERT INTO DicomIdentifiers VALUES(?, ?, ?, ?)");
     s.BindInt64(0, id);
@@ -789,8 +850,8 @@ namespace Orthanc
   }
 
 
-  void DatabaseWrapper::GetMainDicomTags(DicomMap& map,
-                                         int64_t id)
+  void SQLiteDatabaseWrapper::GetMainDicomTags(DicomMap& map,
+                                               int64_t id)
   {
     map.Clear();
 
@@ -805,8 +866,8 @@ namespace Orthanc
   }
 
 
-  void DatabaseWrapper::GetChildrenPublicId(std::list<std::string>& target,
-                                            int64_t id)
+  void SQLiteDatabaseWrapper::GetChildrenPublicId(std::list<std::string>& target,
+                                                  int64_t id)
   {
     SQLite::Statement s(db_, SQLITE_FROM_HERE, "SELECT a.publicId FROM Resources AS a, Resources AS b  "
                         "WHERE a.parentId = b.internalId AND b.internalId = ?");     
@@ -821,8 +882,8 @@ namespace Orthanc
   }
 
 
-  void DatabaseWrapper::GetChildrenInternalId(std::list<int64_t>& target,
-                                              int64_t id)
+  void SQLiteDatabaseWrapper::GetChildrenInternalId(std::list<int64_t>& target,
+                                                    int64_t id)
   {
     SQLite::Statement s(db_, SQLITE_FROM_HERE, "SELECT a.internalId FROM Resources AS a, Resources AS b  "
                         "WHERE a.parentId = b.internalId AND b.internalId = ?");     
@@ -837,8 +898,8 @@ namespace Orthanc
   }
 
 
-  void DatabaseWrapper::LogChange(int64_t internalId,
-                                  const ServerIndexChange& change)
+  void SQLiteDatabaseWrapper::LogChange(int64_t internalId,
+                                        const ServerIndexChange& change)
   {
     SQLite::Statement s(db_, SQLITE_FROM_HERE, "INSERT INTO Changes VALUES(NULL, ?, ?, ?, ?)");
     s.BindInt(0, change.GetChangeType());
@@ -849,7 +910,7 @@ namespace Orthanc
   }
 
 
-  void DatabaseWrapper::LogExportedResource(const ExportedResource& resource)
+  void SQLiteDatabaseWrapper::LogExportedResource(const ExportedResource& resource)
   {
     SQLite::Statement s(db_, SQLITE_FROM_HERE, 
                         "INSERT INTO ExportedResources VALUES(NULL, ?, ?, ?, ?, ?, ?, ?, ?)");
@@ -866,10 +927,10 @@ namespace Orthanc
   }
 
 
-  void DatabaseWrapper::GetExportedResources(std::list<ExportedResource>& target,
-                                             bool& done,
-                                             int64_t since,
-                                             uint32_t maxResults)
+  void SQLiteDatabaseWrapper::GetExportedResources(std::list<ExportedResource>& target,
+                                                   bool& done,
+                                                   int64_t since,
+                                                   uint32_t maxResults)
   {
     SQLite::Statement s(db_, SQLITE_FROM_HERE, 
                         "SELECT * FROM ExportedResources WHERE seq>? ORDER BY seq LIMIT ?");
@@ -879,7 +940,7 @@ namespace Orthanc
   }
 
     
-  void DatabaseWrapper::GetLastExportedResource(std::list<ExportedResource>& target)
+  void SQLiteDatabaseWrapper::GetLastExportedResource(std::list<ExportedResource>& target)
   {
     bool done;  // Ignored
     SQLite::Statement s(db_, SQLITE_FROM_HERE, 
@@ -888,23 +949,29 @@ namespace Orthanc
   }
 
     
-  uint64_t DatabaseWrapper::GetTotalCompressedSize()
+  uint64_t SQLiteDatabaseWrapper::GetTotalCompressedSize()
   {
-    SQLite::Statement s(db_, SQLITE_FROM_HERE, "SELECT SUM(compressedSize) FROM AttachedFiles");
+    // Old SQL query that was used in Orthanc <= 1.5.0:
+    // SQLite::Statement s(db_, SQLITE_FROM_HERE, "SELECT SUM(compressedSize) FROM AttachedFiles");
+
+    SQLite::Statement s(db_, SQLITE_FROM_HERE, "SELECT value FROM GlobalIntegers WHERE key=0");
     s.Run();
     return static_cast<uint64_t>(s.ColumnInt64(0));
   }
 
     
-  uint64_t DatabaseWrapper::GetTotalUncompressedSize()
+  uint64_t SQLiteDatabaseWrapper::GetTotalUncompressedSize()
   {
-    SQLite::Statement s(db_, SQLITE_FROM_HERE, "SELECT SUM(uncompressedSize) FROM AttachedFiles");
+    // Old SQL query that was used in Orthanc <= 1.5.0:
+    // SQLite::Statement s(db_, SQLITE_FROM_HERE, "SELECT SUM(uncompressedSize) FROM AttachedFiles");
+
+    SQLite::Statement s(db_, SQLITE_FROM_HERE, "SELECT value FROM GlobalIntegers WHERE key=1");
     s.Run();
     return static_cast<uint64_t>(s.ColumnInt64(0));
   }
 
 
-  uint64_t DatabaseWrapper::GetResourceCount(ResourceType resourceType)
+  uint64_t SQLiteDatabaseWrapper::GetResourceCount(ResourceType resourceType)
   {
     SQLite::Statement s(db_, SQLITE_FROM_HERE, 
                         "SELECT COUNT(*) FROM Resources WHERE resourceType=?");
@@ -923,8 +990,8 @@ namespace Orthanc
   }
 
 
-  void DatabaseWrapper::GetAllInternalIds(std::list<int64_t>& target,
-                                          ResourceType resourceType)
+  void SQLiteDatabaseWrapper::GetAllInternalIds(std::list<int64_t>& target,
+                                                ResourceType resourceType)
   {
     SQLite::Statement s(db_, SQLITE_FROM_HERE, "SELECT internalId FROM Resources WHERE resourceType=?");
     s.BindInt(0, resourceType);
@@ -937,8 +1004,8 @@ namespace Orthanc
   }
 
 
-  void DatabaseWrapper::GetAllPublicIds(std::list<std::string>& target,
-                                        ResourceType resourceType)
+  void SQLiteDatabaseWrapper::GetAllPublicIds(std::list<std::string>& target,
+                                              ResourceType resourceType)
   {
     SQLite::Statement s(db_, SQLITE_FROM_HERE, "SELECT publicId FROM Resources WHERE resourceType=?");
     s.BindInt(0, resourceType);
@@ -951,10 +1018,10 @@ namespace Orthanc
   }
 
 
-  void DatabaseWrapper::GetAllPublicIds(std::list<std::string>& target,
-                                        ResourceType resourceType,
-                                        size_t since,
-                                        size_t limit)
+  void SQLiteDatabaseWrapper::GetAllPublicIds(std::list<std::string>& target,
+                                              ResourceType resourceType,
+                                              size_t since,
+                                              size_t limit)
   {
     if (limit == 0)
     {
@@ -977,7 +1044,7 @@ namespace Orthanc
   }
 
 
-  bool DatabaseWrapper::SelectPatientToRecycle(int64_t& internalId)
+  bool SQLiteDatabaseWrapper::SelectPatientToRecycle(int64_t& internalId)
   {
     SQLite::Statement s(db_, SQLITE_FROM_HERE,
                         "SELECT patientId FROM PatientRecyclingOrder ORDER BY seq ASC LIMIT 1");
@@ -995,8 +1062,8 @@ namespace Orthanc
   }
 
 
-  bool DatabaseWrapper::SelectPatientToRecycle(int64_t& internalId,
-                                               int64_t patientIdToAvoid)
+  bool SQLiteDatabaseWrapper::SelectPatientToRecycle(int64_t& internalId,
+                                                     int64_t patientIdToAvoid)
   {
     SQLite::Statement s(db_, SQLITE_FROM_HERE,
                         "SELECT patientId FROM PatientRecyclingOrder "
@@ -1016,7 +1083,7 @@ namespace Orthanc
   }
 
 
-  bool DatabaseWrapper::IsProtectedPatient(int64_t internalId)
+  bool SQLiteDatabaseWrapper::IsProtectedPatient(int64_t internalId)
   {
     SQLite::Statement s(db_, SQLITE_FROM_HERE,
                         "SELECT * FROM PatientRecyclingOrder WHERE patientId = ?");
@@ -1025,8 +1092,8 @@ namespace Orthanc
   }
 
 
-  void DatabaseWrapper::SetProtectedPatient(int64_t internalId, 
-                                            bool isProtected)
+  void SQLiteDatabaseWrapper::SetProtectedPatient(int64_t internalId, 
+                                                  bool isProtected)
   {
     if (isProtected)
     {
@@ -1047,7 +1114,7 @@ namespace Orthanc
   }
 
 
-  bool DatabaseWrapper::IsExistingResource(int64_t internalId)
+  bool SQLiteDatabaseWrapper::IsExistingResource(int64_t internalId)
   {
     SQLite::Statement s(db_, SQLITE_FROM_HERE, 
                         "SELECT * FROM Resources WHERE internalId=?");
@@ -1056,11 +1123,11 @@ namespace Orthanc
   }
 
 
-  void DatabaseWrapper::LookupIdentifier(std::list<int64_t>& target,
-                                         ResourceType level,
-                                         const DicomTag& tag,
-                                         IdentifierConstraintType type,
-                                         const std::string& value)
+  void SQLiteDatabaseWrapper::LookupIdentifier(std::list<int64_t>& target,
+                                               ResourceType level,
+                                               const DicomTag& tag,
+                                               IdentifierConstraintType type,
+                                               const std::string& value)
   {
     static const char* COMMON = ("SELECT d.id FROM DicomIdentifiers AS d, Resources AS r WHERE "
                                  "d.id = r.internalId AND r.resourceType=? AND "
@@ -1104,11 +1171,11 @@ namespace Orthanc
   }
 
 
-  void DatabaseWrapper::LookupIdentifierRange(std::list<int64_t>& target,
-                                              ResourceType level,
-                                              const DicomTag& tag,
-                                              const std::string& start,
-                                              const std::string& end)
+  void SQLiteDatabaseWrapper::LookupIdentifierRange(std::list<int64_t>& target,
+                                                    ResourceType level,
+                                                    const DicomTag& tag,
+                                                    const std::string& start,
+                                                    const std::string& end)
   {
     SQLite::Statement statement(db_, SQLITE_FROM_HERE,
                                 "SELECT d.id FROM DicomIdentifiers AS d, Resources AS r WHERE "
@@ -1127,5 +1194,11 @@ namespace Orthanc
     {
       target.push_back(statement.ColumnInt64(0));
     }    
+  }
+
+
+  bool SQLiteDatabaseWrapper::IsDiskSizeAbove(uint64_t threshold)
+  {
+    return GetTotalCompressedSize() > threshold;
   }
 }
