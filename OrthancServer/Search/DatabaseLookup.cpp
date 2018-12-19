@@ -39,50 +39,6 @@
 
 namespace Orthanc
 {
-  void DatabaseLookup::LoadTags(ResourceType level)
-  {
-    const DicomTag* tags = NULL;
-    size_t size;
-    
-    ServerToolbox::LoadIdentifiers(tags, size, level);
-    
-    for (size_t i = 0; i < size; i++)
-    {
-      if (tags_.find(tags[i]) == tags_.end())
-      {
-        tags_[tags[i]] = TagInfo(DicomTagType_Identifier, level);
-      }
-      else
-      {
-        // These patient-level tags are copied in the study level
-        assert(level == ResourceType_Study &&
-               (tags[i] == DICOM_TAG_PATIENT_ID ||
-                tags[i] == DICOM_TAG_PATIENT_NAME ||
-                tags[i] == DICOM_TAG_PATIENT_BIRTH_DATE));
-      }
-    }
-    
-    DicomMap::LoadMainDicomTags(tags, size, level);
-    
-    for (size_t i = 0; i < size; i++)
-    {
-      if (tags_.find(tags[i]) == tags_.end())
-      {
-        tags_[tags[i]] = TagInfo(DicomTagType_Main, level);
-      }
-    }
-  }
-
-
-  DatabaseLookup::DatabaseLookup()
-  {
-    LoadTags(ResourceType_Patient);
-    LoadTags(ResourceType_Study);
-    LoadTags(ResourceType_Series);
-    LoadTags(ResourceType_Instance);
-  }
-
-
   DatabaseLookup::~DatabaseLookup()
   {
     for (size_t i = 0; i < constraints_.size(); i++)
@@ -116,17 +72,6 @@ namespace Orthanc
     else
     {
       constraints_.push_back(constraint);
-
-      std::map<DicomTag, TagInfo>::const_iterator tag = tags_.find(constraint->GetTag());
-
-      if (tag == tags_.end())
-      {
-        constraint->SetTagInfo(DicomTagType_Generic, ResourceType_Instance);
-      }
-      else
-      {
-        constraint->SetTagInfo(tag->second.GetType(), tag->second.GetLevel());
-      }
     }
   }
 
@@ -146,9 +91,83 @@ namespace Orthanc
   }
 
 
+  void DatabaseLookup::AddDicomConstraintInternal(const DicomTag& tag,
+                                                  ValueRepresentation vr,
+                                                  const std::string& dicomQuery,
+                                                  bool caseSensitive,
+                                                  bool mandatoryTag)
+  {
+    if ((vr == ValueRepresentation_Date ||
+         vr == ValueRepresentation_DateTime ||
+         vr == ValueRepresentation_Time) &&
+        dicomQuery.find('-') != std::string::npos)
+    {
+      /**
+       * Range matching is only defined for TM, DA and DT value
+       * representations. This code fixes issues 35 and 37.
+       *
+       * Reference: "Range matching is not defined for types of
+       * Attributes other than dates and times", DICOM PS 3.4,
+       * C.2.2.2.5 ("Range Matching").
+       **/
+      size_t separator = dicomQuery.find('-');
+      std::string lower = dicomQuery.substr(0, separator);
+      std::string upper = dicomQuery.substr(separator + 1);
+
+      if (!lower.empty())
+      {
+        AddConstraint(new DicomTagConstraint
+                      (tag, ConstraintType_GreaterOrEqual, lower, caseSensitive, mandatoryTag));
+      }
+
+      if (!upper.empty())
+      {
+        AddConstraint(new DicomTagConstraint
+                      (tag, ConstraintType_SmallerOrEqual, upper, caseSensitive, mandatoryTag));
+      }
+    }
+    else if (dicomQuery.find('\\') != std::string::npos)
+    {
+      DicomTag fixedTag(tag);
+
+      if (tag == DICOM_TAG_MODALITIES_IN_STUDY)
+      {
+        // http://www.itk.org/Wiki/DICOM_QueryRetrieve_Explained
+        // http://dicomiseasy.blogspot.be/2012/01/dicom-queryretrieve-part-i.html  
+        fixedTag = DICOM_TAG_MODALITY;
+      }
+
+      std::auto_ptr<DicomTagConstraint> constraint
+        (new DicomTagConstraint(fixedTag, ConstraintType_List, caseSensitive, mandatoryTag));
+
+      std::vector<std::string> items;
+      Toolbox::TokenizeString(items, dicomQuery, '\\');
+
+      for (size_t i = 0; i < items.size(); i++)
+      {
+        constraint->AddValue(items[i]);
+      }
+
+      AddConstraint(constraint.release());
+    }
+    else if (dicomQuery.find('*') != std::string::npos ||
+             dicomQuery.find('?') != std::string::npos)
+    {
+      AddConstraint(new DicomTagConstraint
+                    (tag, ConstraintType_Wildcard, dicomQuery, caseSensitive, mandatoryTag));
+    }
+    else
+    {
+      AddConstraint(new DicomTagConstraint
+                    (tag, ConstraintType_Equal, dicomQuery, caseSensitive, mandatoryTag));
+    }
+  }
+
+
   void DatabaseLookup::AddDicomConstraint(const DicomTag& tag,
                                           const std::string& dicomQuery,
-                                          bool caseSensitivePN)
+                                          bool caseSensitivePN,
+                                          bool mandatoryTag)
   {
     ValueRepresentation vr = FromDcmtkBridge::LookupValueRepresentation(tag);
 
@@ -188,75 +207,24 @@ namespace Orthanc
      * (0020,000D) UI StudyInstanceUID   => Case-sensitive
      * (0020,000E) UI SeriesInstanceUID  => Case-sensitive
      **/
-    bool caseSensitive = true;
+    
     if (vr == ValueRepresentation_PersonName)
     {
-      caseSensitive = caseSensitivePN;
-    }
-
-    if ((vr == ValueRepresentation_Date ||
-         vr == ValueRepresentation_DateTime ||
-         vr == ValueRepresentation_Time) &&
-        dicomQuery.find('-') != std::string::npos)
-    {
-      /**
-       * Range matching is only defined for TM, DA and DT value
-       * representations. This code fixes issues 35 and 37.
-       *
-       * Reference: "Range matching is not defined for types of
-       * Attributes other than dates and times", DICOM PS 3.4,
-       * C.2.2.2.5 ("Range Matching").
-       **/
-      size_t separator = dicomQuery.find('-');
-      std::string lower = dicomQuery.substr(0, separator);
-      std::string upper = dicomQuery.substr(separator + 1);
-
-      if (!lower.empty())
-      {
-        AddConstraint(new DicomTagConstraint
-                      (tag, ConstraintType_GreaterOrEqual, lower, caseSensitive));
-      }
-
-      if (!upper.empty())
-      {
-        AddConstraint(new DicomTagConstraint
-                      (tag, ConstraintType_SmallerOrEqual, upper, caseSensitive));
-      }
-    }
-    else if (dicomQuery.find('\\') != std::string::npos)
-    {
-      DicomTag fixedTag(tag);
-
-      if (tag == DICOM_TAG_MODALITIES_IN_STUDY)
-      {
-        // http://www.itk.org/Wiki/DICOM_QueryRetrieve_Explained
-        // http://dicomiseasy.blogspot.be/2012/01/dicom-queryretrieve-part-i.html  
-        fixedTag = DICOM_TAG_MODALITY;
-      }
-
-      std::auto_ptr<DicomTagConstraint> constraint
-        (new DicomTagConstraint(fixedTag, ConstraintType_List, caseSensitive));
-
-      std::vector<std::string> items;
-      Toolbox::TokenizeString(items, dicomQuery, '\\');
-
-      for (size_t i = 0; i < items.size(); i++)
-      {
-        constraint->AddValue(items[i]);
-      }
-
-      AddConstraint(constraint.release());
-    }
-    else if (dicomQuery.find('*') != std::string::npos ||
-             dicomQuery.find('?') != std::string::npos)
-    {
-      AddConstraint(new DicomTagConstraint
-                    (tag, ConstraintType_Wildcard, dicomQuery, caseSensitive));
+      AddDicomConstraintInternal(tag, vr, dicomQuery, caseSensitivePN, mandatoryTag);
     }
     else
     {
-      AddConstraint(new DicomTagConstraint
-                    (tag, ConstraintType_Equal, dicomQuery, caseSensitive));
+      AddDicomConstraintInternal(tag, vr, dicomQuery, true /* case sensitive */, mandatoryTag);
     }
+  }
+
+
+  void DatabaseLookup::AddRestConstraint(const DicomTag& tag,
+                                         const std::string& dicomQuery,
+                                         bool caseSensitive,
+                                         bool mandatoryTag)
+  {
+    AddDicomConstraintInternal(tag, FromDcmtkBridge::LookupValueRepresentation(tag),
+                               dicomQuery, caseSensitive, mandatoryTag);
   }
 }

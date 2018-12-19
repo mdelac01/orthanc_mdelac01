@@ -31,53 +31,78 @@
  **/
 
 
-#pragma once
+#include "../PrecompiledHeadersServer.h"
+#include "DatabaseConstraint.h"
 
-#include "DicomTagConstraint.h"
+#include "../../Core/OrthancException.h"
+#include "../ServerToolbox.h"
 
 namespace Orthanc
 {
-  class DatabaseLookup : public boost::noncopyable
+  DatabaseConstraint::DatabaseConstraint(const DicomTagConstraint& constraint,
+                                         ResourceType level,
+                                         DicomTagType tagType) :
+    level_(level),
+    tag_(constraint.GetTag()),
+    constraintType_(constraint.GetConstraintType()),
+    mandatory_(constraint.IsMandatory())
   {
-  private:
-    std::vector<DicomTagConstraint*>  constraints_;
-
-    void AddDicomConstraintInternal(const DicomTag& tag,
-                                    ValueRepresentation vr,
-                                    const std::string& dicomQuery,
-                                    bool caseSensitive,
-                                    bool mandatoryTag);
-  public:
-    DatabaseLookup()
+    switch (tagType)
     {
+      case DicomTagType_Identifier:
+        isIdentifier_ = true;
+        caseSensitive_ = true;
+        break;
+
+      case DicomTagType_Main:
+        isIdentifier_ = false;
+        caseSensitive_ = constraint.IsCaseSensitive();
+        break;
+
+      default:
+        throw OrthancException(ErrorCode_InternalError);
     }
 
-    ~DatabaseLookup();
-
-    void Reserve(size_t n)
+    values_.reserve(constraint.GetValues().size());
+      
+    for (std::set<std::string>::const_iterator
+           it = constraint.GetValues().begin();
+         it != constraint.GetValues().end(); ++it)
     {
-      constraints_.reserve(n);
+      if (isIdentifier_)
+      {
+        values_.push_back(ServerToolbox::NormalizeIdentifier(*it));
+      }
+      else
+      {
+        values_.push_back(*it);
+      }
     }
+  }
 
-    size_t GetConstraintsCount() const
+  
+  const std::string& DatabaseConstraint::GetValue(size_t index) const
+  {
+    if (index >= values_.size())
     {
-      return constraints_.size();
+      throw OrthancException(ErrorCode_ParameterOutOfRange);
     }
+    else
+    {
+      return values_[index];
+    }
+  }
 
-    const DicomTagConstraint& GetConstraint(size_t index) const;
 
-    void AddConstraint(DicomTagConstraint* constraint);  // Takes ownership
-
-    bool IsMatch(const DicomMap& value);
-
-    void AddDicomConstraint(const DicomTag& tag,
-                            const std::string& dicomQuery,
-                            bool caseSensitivePN,
-                            bool mandatoryTag);
-
-    void AddRestConstraint(const DicomTag& tag,
-                           const std::string& dicomQuery,
-                           bool caseSensitive,
-                           bool mandatoryTag);
-  };
+  const std::string& DatabaseConstraint::GetSingleValue() const
+  {
+    if (values_.size() != 1)
+    {
+      throw OrthancException(ErrorCode_BadSequenceOfCalls);
+    }
+    else
+    {
+      return values_[0];
+    }
+  }
 }

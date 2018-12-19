@@ -59,6 +59,7 @@ namespace Orthanc
     class Listener;
     class Transaction;
     class UnstableResourcePayload;
+    class MainDicomTagsRegistry;
 
     bool done_;
     boost::mutex mutex_;
@@ -69,10 +70,10 @@ namespace Orthanc
     IDatabaseWrapper& db_;
     LeastRecentlyUsedIndex<int64_t, UnstableResourcePayload>  unstableResources_;
 
-    uint64_t     currentStorageSize_;
     uint64_t     maximumStorageSize_;
     unsigned int maximumPatients_;
     bool         overwrite_;
+    std::auto_ptr<MainDicomTagsRegistry>  mainDicomTagsRegistry_;
 
     static void FlushThread(ServerIndex* that,
                             unsigned int threadSleep);
@@ -125,6 +126,10 @@ namespace Orthanc
                              int64_t instance,
                              MetadataType metadata,
                              const std::string& value);
+
+    void NormalizeLookup(std::vector<DatabaseConstraint>& target,
+                         const DatabaseLookup& source,
+                         ResourceType level) const;
 
   public:
     ServerIndex(ServerContext& context,
@@ -293,5 +298,11 @@ namespace Orthanc
                       ResourceType parentType);
 
     void ReconstructInstance(ParsedDicomFile& dicom);
+
+    void ApplyLookupResources(std::vector<std::string>& resourcesId,
+                              std::vector<std::string>& instancesId,
+                              const DatabaseLookup& lookup,
+                              ResourceType queryLevel,
+                              size_t limit);
   };
 }
