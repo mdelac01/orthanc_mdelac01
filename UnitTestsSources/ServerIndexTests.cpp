@@ -37,7 +37,7 @@
 #include "../Core/FileStorage/FilesystemStorage.h"
 #include "../Core/FileStorage/MemoryStorageArea.h"
 #include "../Core/Logging.h"
-#include "../OrthancServer/DatabaseWrapper.h"
+#include "../OrthancServer/SQLiteDatabaseWrapper.h"
 #include "../OrthancServer/Search/LookupIdentifierQuery.h"
 #include "../OrthancServer/ServerContext.h"
 #include "../OrthancServer/ServerIndex.h"
@@ -117,7 +117,7 @@ namespace
       switch (GetParam())
       {
         case DatabaseWrapperClass_SQLite:
-          index_.reset(new DatabaseWrapper());
+          index_.reset(new SQLiteDatabaseWrapper());
           break;
 
         default:
@@ -141,7 +141,7 @@ namespace
       {
         case DatabaseWrapperClass_SQLite:
         {
-          DatabaseWrapper* sqlite = dynamic_cast<DatabaseWrapper*>(index_.get());
+          SQLiteDatabaseWrapper* sqlite = dynamic_cast<SQLiteDatabaseWrapper*>(index_.get());
           ASSERT_EQ(expected, sqlite->GetTableRecordCount(table));
           break;
         }
@@ -159,7 +159,7 @@ namespace
       {
         case DatabaseWrapperClass_SQLite:
         {
-          DatabaseWrapper* sqlite = dynamic_cast<DatabaseWrapper*>(index_.get());
+          SQLiteDatabaseWrapper* sqlite = dynamic_cast<SQLiteDatabaseWrapper*>(index_.get());
           ASSERT_FALSE(sqlite->GetParentPublicId(s, id));
           break;
         }
@@ -177,7 +177,7 @@ namespace
       {
         case DatabaseWrapperClass_SQLite:
         {
-          DatabaseWrapper* sqlite = dynamic_cast<DatabaseWrapper*>(index_.get());
+          SQLiteDatabaseWrapper* sqlite = dynamic_cast<SQLiteDatabaseWrapper*>(index_.get());
           ASSERT_TRUE(sqlite->GetParentPublicId(s, id));
           ASSERT_EQ(expected, s);
           break;
@@ -196,7 +196,7 @@ namespace
       {
         case DatabaseWrapperClass_SQLite:
         {
-          DatabaseWrapper* sqlite = dynamic_cast<DatabaseWrapper*>(index_.get());
+          SQLiteDatabaseWrapper* sqlite = dynamic_cast<SQLiteDatabaseWrapper*>(index_.get());
           sqlite->GetChildren(j, id);
           ASSERT_EQ(0u, j.size());
           break;
@@ -215,7 +215,7 @@ namespace
       {
         case DatabaseWrapperClass_SQLite:
         {
-          DatabaseWrapper* sqlite = dynamic_cast<DatabaseWrapper*>(index_.get());
+          SQLiteDatabaseWrapper* sqlite = dynamic_cast<SQLiteDatabaseWrapper*>(index_.get());
           sqlite->GetChildren(j, id);
           ASSERT_EQ(1u, j.size());
           ASSERT_EQ(expected, j.front());
@@ -237,7 +237,7 @@ namespace
       {
         case DatabaseWrapperClass_SQLite:
         {
-          DatabaseWrapper* sqlite = dynamic_cast<DatabaseWrapper*>(index_.get());
+          SQLiteDatabaseWrapper* sqlite = dynamic_cast<SQLiteDatabaseWrapper*>(index_.get());
           sqlite->GetChildren(j, id);
           ASSERT_EQ(2u, j.size());
           ASSERT_TRUE((expected1 == j.front() && expected2 == j.back()) ||
@@ -464,7 +464,15 @@ TEST_P(DatabaseWrapperTest, Simple)
 
   CheckTableRecordCount(0, "Resources");
   CheckTableRecordCount(0, "AttachedFiles");
-  CheckTableRecordCount(2, "GlobalProperties");
+  CheckTableRecordCount(3, "GlobalProperties");
+
+  std::string tmp;
+  ASSERT_TRUE(index_->LookupGlobalProperty(tmp, GlobalProperty_DatabaseSchemaVersion));
+  ASSERT_EQ("6", tmp);
+  ASSERT_TRUE(index_->LookupGlobalProperty(tmp, GlobalProperty_FlushSleep));
+  ASSERT_EQ("World", tmp);
+  ASSERT_TRUE(index_->LookupGlobalProperty(tmp, GlobalProperty_GetTotalSizeIsFast));
+  ASSERT_EQ("1", tmp);
 
   ASSERT_EQ(3u, listener_->deletedFiles_.size());
   ASSERT_FALSE(std::find(listener_->deletedFiles_.begin(), 
@@ -676,7 +684,7 @@ TEST(ServerIndex, Sequence)
 
   SystemToolbox::RemoveFile(path + "/index");
   FilesystemStorage storage(path);
-  DatabaseWrapper db;   // The SQLite DB is in memory
+  SQLiteDatabaseWrapper db;   // The SQLite DB is in memory
   db.Open();
   ServerContext context(db, storage, true /* running unit tests */, 10);
   context.SetupJobsEngine(true, false);
@@ -776,7 +784,7 @@ TEST(ServerIndex, AttachmentRecycling)
 
   SystemToolbox::RemoveFile(path + "/index");
   FilesystemStorage storage(path);
-  DatabaseWrapper db;   // The SQLite DB is in memory
+  SQLiteDatabaseWrapper db;   // The SQLite DB is in memory
   db.Open();
   ServerContext context(db, storage, true /* running unit tests */, 10);
   context.SetupJobsEngine(true, false);
@@ -864,7 +872,7 @@ TEST(ServerIndex, Overwrite)
     bool overwrite = (i == 0);
 
     MemoryStorageArea storage;
-    DatabaseWrapper db;   // The SQLite DB is in memory
+    SQLiteDatabaseWrapper db;   // The SQLite DB is in memory
     db.Open();
     ServerContext context(db, storage, true /* running unit tests */, 10);
     context.SetupJobsEngine(true, false);

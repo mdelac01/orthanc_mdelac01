@@ -37,47 +37,59 @@
 
 namespace Orthanc
 {
-  class DatabaseLookup : public boost::noncopyable
+  class DatabaseConstraint
   {
   private:
-    std::vector<DicomTagConstraint*>  constraints_;
+    ResourceType              level_;
+    DicomTag                  tag_;
+    bool                      isIdentifier_;
+    ConstraintType            constraintType_;
+    std::vector<std::string>  values_;
+    bool                      caseSensitive_;
+    bool                      mandatory_;
 
-    void AddDicomConstraintInternal(const DicomTag& tag,
-                                    ValueRepresentation vr,
-                                    const std::string& dicomQuery,
-                                    bool caseSensitive,
-                                    bool mandatoryTag);
   public:
-    DatabaseLookup()
+    DatabaseConstraint(const DicomTagConstraint& constraint,
+                       ResourceType level,
+                       DicomTagType tagType);
+
+    ResourceType GetLevel() const
     {
+      return level_;
     }
 
-    ~DatabaseLookup();
-
-    void Reserve(size_t n)
+    const DicomTag& GetTag() const
     {
-      constraints_.reserve(n);
+      return tag_;
     }
 
-    size_t GetConstraintsCount() const
+    bool IsIdentifier() const
     {
-      return constraints_.size();
+      return isIdentifier_;
     }
 
-    const DicomTagConstraint& GetConstraint(size_t index) const;
+    ConstraintType GetConstraintType() const
+    {
+      return constraintType_;
+    }
 
-    void AddConstraint(DicomTagConstraint* constraint);  // Takes ownership
+    size_t GetValuesCount() const
+    {
+      return values_.size();
+    }
 
-    bool IsMatch(const DicomMap& value);
+    const std::string& GetValue(size_t index) const;
 
-    void AddDicomConstraint(const DicomTag& tag,
-                            const std::string& dicomQuery,
-                            bool caseSensitivePN,
-                            bool mandatoryTag);
+    const std::string& GetSingleValue() const;
 
-    void AddRestConstraint(const DicomTag& tag,
-                           const std::string& dicomQuery,
-                           bool caseSensitive,
-                           bool mandatoryTag);
+    bool IsCaseSensitive() const
+    {
+      return caseSensitive_;
+    }
+
+    bool IsMandatory() const
+    {
+      return mandatory_;
+    }
   };
 }
