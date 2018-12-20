@@ -36,7 +36,6 @@
 #include "IDatabaseWrapper.h"
 
 #include "../Core/SQLite/Connection.h"
-#include "../Core/SQLite/Transaction.h"
 
 namespace Orthanc
 {
@@ -50,9 +49,11 @@ namespace Orthanc
    * translates low-level requests into SQL statements. Mutual
    * exclusion MUST be implemented at a higher level.
    **/
-  class DatabaseWrapper : public IDatabaseWrapper
+  class SQLiteDatabaseWrapper : public IDatabaseWrapper
   {
   private:
+    class Transaction;
+
     IDatabaseListener* listener_;
     SQLite::Connection db_;
     Internals::SignalRemainingAncestor* signalRemainingAncestor_;
@@ -71,9 +72,9 @@ namespace Orthanc
     void ClearTable(const std::string& tableName);
 
   public:
-    DatabaseWrapper(const std::string& path);
+    SQLiteDatabaseWrapper(const std::string& path);
 
-    DatabaseWrapper();
+    SQLiteDatabaseWrapper();
 
     virtual void Open();
 
@@ -100,10 +101,7 @@ namespace Orthanc
 
     virtual void GetLastChange(std::list<ServerIndexChange>& target /*out*/);
 
-    virtual SQLite::ITransaction* StartTransaction()
-    {
-      return new SQLite::Transaction(db_);
-    }
+    virtual IDatabaseWrapper::ITransaction* StartTransaction();
 
     virtual void FlushToDisk()
     {
@@ -265,16 +263,12 @@ namespace Orthanc
 
     virtual bool IsExistingResource(int64_t internalId);
 
-    virtual void LookupIdentifier(std::list<int64_t>& result,
-                                  ResourceType level,
-                                  const DicomTag& tag,
-                                  IdentifierConstraintType type,
-                                  const std::string& value);
+    virtual bool IsDiskSizeAbove(uint64_t threshold);
 
-    virtual void LookupIdentifierRange(std::list<int64_t>& result,
-                                       ResourceType level,
-                                       const DicomTag& tag,
-                                       const std::string& start,
-                                       const std::string& end);
+    virtual void ApplyLookupResources(std::vector<std::string>& resourcesId,
+                                      std::vector<std::string>* instancesId,
+                                      const std::vector<DatabaseConstraint>& lookup,
+                                      ResourceType queryLevel,
+                                      size_t limit);
   };
 }

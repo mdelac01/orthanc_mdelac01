@@ -31,49 +31,78 @@
  **/
 
 
-#pragma once
+#include "../PrecompiledHeadersServer.h"
+#include "DatabaseConstraint.h"
 
-#include "../IDatabaseWrapper.h"
-
-#include <set>
-#include <boost/noncopyable.hpp>
-#include <memory>
+#include "../../Core/OrthancException.h"
+#include "../ServerToolbox.h"
 
 namespace Orthanc
 {
-  class SetOfResources : public boost::noncopyable
+  DatabaseConstraint::DatabaseConstraint(const DicomTagConstraint& constraint,
+                                         ResourceType level,
+                                         DicomTagType tagType) :
+    level_(level),
+    tag_(constraint.GetTag()),
+    constraintType_(constraint.GetConstraintType()),
+    mandatory_(constraint.IsMandatory())
   {
-  private:
-    typedef std::set<int64_t>  Resources;
-
-    IDatabaseWrapper&         database_;
-    ResourceType              level_;
-    std::auto_ptr<Resources>  resources_;
-    
-  public:
-    SetOfResources(IDatabaseWrapper& database,
-                   ResourceType level) : 
-      database_(database),
-      level_(level)
+    switch (tagType)
     {
+      case DicomTagType_Identifier:
+        isIdentifier_ = true;
+        caseSensitive_ = true;
+        break;
+
+      case DicomTagType_Main:
+        isIdentifier_ = false;
+        caseSensitive_ = constraint.IsCaseSensitive();
+        break;
+
+      default:
+        throw OrthancException(ErrorCode_InternalError);
     }
 
-    ResourceType GetLevel() const
+    values_.reserve(constraint.GetValues().size());
+      
+    for (std::set<std::string>::const_iterator
+           it = constraint.GetValues().begin();
+         it != constraint.GetValues().end(); ++it)
     {
-      return level_;
+      if (isIdentifier_)
+      {
+        values_.push_back(ServerToolbox::NormalizeIdentifier(*it));
+      }
+      else
+      {
+        values_.push_back(*it);
+      }
     }
+  }
 
-    void Intersect(const std::list<int64_t>& resources);
-
-    void GoDown();
-
-    void Flatten(std::list<int64_t>& result);
-
-    void Flatten(std::list<std::string>& result);
-
-    void Clear()
+  
+  const std::string& DatabaseConstraint::GetValue(size_t index) const
+  {
+    if (index >= values_.size())
     {
-      resources_.reset(NULL);
+      throw OrthancException(ErrorCode_ParameterOutOfRange);
     }
-  };
+    else
+    {
+      return values_[index];
+    }
+  }
+
+
+  const std::string& DatabaseConstraint::GetSingleValue() const
+  {
+    if (values_.size() != 1)
+    {
+      throw OrthancException(ErrorCode_BadSequenceOfCalls);
+    }
+    else
+    {
+      return values_[0];
+    }
+  }
 }

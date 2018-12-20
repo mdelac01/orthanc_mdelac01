@@ -31,58 +31,65 @@
  **/
 
 
-#include "../PrecompiledHeadersServer.h"
-#include "ListConstraint.h"
+#pragma once
 
-#include "../../Core/Toolbox.h"
+#include "DicomTagConstraint.h"
 
 namespace Orthanc
 {
-  void ListConstraint::AddAllowedValue(const std::string& value)
+  class DatabaseConstraint
   {
-    if (isCaseSensitive_)
-    {
-      allowedValues_.insert(value);
-    }
-    else
-    {
-      allowedValues_.insert(Toolbox::ToUpperCaseWithAccents(value));
-    }
-  }
+  private:
+    ResourceType              level_;
+    DicomTag                  tag_;
+    bool                      isIdentifier_;
+    ConstraintType            constraintType_;
+    std::vector<std::string>  values_;
+    bool                      caseSensitive_;
+    bool                      mandatory_;
 
+  public:
+    DatabaseConstraint(const DicomTagConstraint& constraint,
+                       ResourceType level,
+                       DicomTagType tagType);
 
-  bool ListConstraint::Match(const std::string& value) const
-  {
-    std::string s;
-    
-    if (isCaseSensitive_)
+    ResourceType GetLevel() const
     {
-      s = value;
-    }
-    else
-    {
-      s = Toolbox::ToUpperCaseWithAccents(value);
+      return level_;
     }
 
-    return allowedValues_.find(s) != allowedValues_.end();
-  }
-
-
-  std::string ListConstraint::Format() const
-  {
-    std::string s;
-
-    for (std::set<std::string>::const_iterator
-           it = allowedValues_.begin(); it != allowedValues_.end(); ++it)
+    const DicomTag& GetTag() const
     {
-      if (!s.empty())
-      {
-        s += "\\";
-      }
-
-      s += *it;
+      return tag_;
     }
 
-    return s;
-  }
+    bool IsIdentifier() const
+    {
+      return isIdentifier_;
+    }
+
+    ConstraintType GetConstraintType() const
+    {
+      return constraintType_;
+    }
+
+    size_t GetValuesCount() const
+    {
+      return values_.size();
+    }
+
+    const std::string& GetValue(size_t index) const;
+
+    const std::string& GetSingleValue() const;
+
+    bool IsCaseSensitive() const
+    {
+      return caseSensitive_;
+    }
+
+    bool IsMandatory() const
+    {
+      return mandatory_;
+    }
+  };
 }

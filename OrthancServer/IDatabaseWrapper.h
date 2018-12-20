@@ -34,11 +34,14 @@
 #pragma once
 
 #include "../Core/DicomFormat/DicomMap.h"
-#include "../Core/SQLite/ITransaction.h"
-#include "../Core/FileStorage/IStorageArea.h"
 #include "../Core/FileStorage/FileInfo.h"
-#include "IDatabaseListener.h"
+#include "../Core/FileStorage/IStorageArea.h"
+#include "../Core/SQLite/ITransaction.h"
+
 #include "ExportedResource.h"
+#include "IDatabaseListener.h"
+#include "Search/DatabaseConstraint.h"
+#include "Search/DatabaseLookup.h"
 
 #include <list>
 #include <boost/noncopyable.hpp>
@@ -48,6 +51,21 @@ namespace Orthanc
   class IDatabaseWrapper : public boost::noncopyable
   {
   public:
+    class ITransaction : public boost::noncopyable
+    {
+    public:
+      virtual ~ITransaction()
+      {
+      }
+
+      virtual void Begin() = 0;
+
+      virtual void Rollback() = 0;
+
+      virtual void Commit(int64_t fileSizeDelta) = 0;
+    };
+
+
     virtual ~IDatabaseWrapper()
     {
     }
@@ -84,6 +102,7 @@ namespace Orthanc
     virtual void GetAllMetadata(std::map<MetadataType, std::string>& target,
                                 int64_t id) = 0;
 
+    // TODO: REMOVE THIS
     virtual void GetAllInternalIds(std::list<int64_t>& target,
                                    ResourceType resourceType) = 0;
 
@@ -150,18 +169,6 @@ namespace Orthanc
     virtual bool LookupGlobalProperty(std::string& target,
                                       GlobalProperty property) = 0;
 
-    virtual void LookupIdentifier(std::list<int64_t>& result,
-                                  ResourceType level,
-                                  const DicomTag& tag,
-                                  IdentifierConstraintType type,
-                                  const std::string& value) = 0;
-
-    virtual void LookupIdentifierRange(std::list<int64_t>& result,
-                                       ResourceType level,
-                                       const DicomTag& tag,
-                                       const std::string& start,
-                                       const std::string& end) = 0;
-
     virtual bool LookupMetadata(std::string& target,
                                 int64_t id,
                                 MetadataType type) = 0;
@@ -198,7 +205,7 @@ namespace Orthanc
     virtual void SetProtectedPatient(int64_t internalId, 
                                      bool isProtected) = 0;
 
-    virtual SQLite::ITransaction* StartTransaction() = 0;
+    virtual ITransaction* StartTransaction() = 0;
 
     virtual void SetListener(IDatabaseListener& listener) = 0;
 
@@ -206,5 +213,13 @@ namespace Orthanc
 
     virtual void Upgrade(unsigned int targetVersion,
                          IStorageArea& storageArea) = 0;
+
+    virtual bool IsDiskSizeAbove(uint64_t threshold) = 0;
+
+    virtual void ApplyLookupResources(std::vector<std::string>& resourcesId,
+                                      std::vector<std::string>* instancesId,   // Can be NULL if not needed
+                                      const std::vector<DatabaseConstraint>& lookup,
+                                      ResourceType queryLevel,
+                                      size_t limit) = 0;
   };
 }

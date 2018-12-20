@@ -38,7 +38,6 @@
 #include "LuaScripting.h"
 #include "OrthancHttpHandler.h"
 #include "ServerIndex.h"
-#include "Search/LookupResource.h"
 
 #include "../Core/Cache/MemoryCache.h"
 #include "../Core/Cache/SharedArchive.h"
@@ -363,7 +362,8 @@ namespace Orthanc
     void Stop();
 
     void Apply(ILookupVisitor& visitor,
-               const ::Orthanc::LookupResource& lookup,
+               const DatabaseLookup& lookup,
+               ResourceType queryLevel,
                size_t since,
                size_t limit);
 

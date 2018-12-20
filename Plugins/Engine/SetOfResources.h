@@ -31,58 +31,49 @@
  **/
 
 
-#include "../PrecompiledHeadersServer.h"
-#include "ListConstraint.h"
+#pragma once
 
-#include "../../Core/Toolbox.h"
+#include "../../OrthancServer/IDatabaseWrapper.h"
+
+#include <set>
+#include <boost/noncopyable.hpp>
+#include <memory>
 
 namespace Orthanc
 {
-  void ListConstraint::AddAllowedValue(const std::string& value)
+  class SetOfResources : public boost::noncopyable
   {
-    if (isCaseSensitive_)
-    {
-      allowedValues_.insert(value);
-    }
-    else
-    {
-      allowedValues_.insert(Toolbox::ToUpperCaseWithAccents(value));
-    }
-  }
+  private:
+    typedef std::set<int64_t>  Resources;
 
-
-  bool ListConstraint::Match(const std::string& value) const
-  {
-    std::string s;
+    IDatabaseWrapper&         database_;
+    ResourceType              level_;
+    std::auto_ptr<Resources>  resources_;
     
-    if (isCaseSensitive_)
+  public:
+    SetOfResources(IDatabaseWrapper& database,
+                   ResourceType level) : 
+      database_(database),
+      level_(level)
     {
-      s = value;
-    }
-    else
-    {
-      s = Toolbox::ToUpperCaseWithAccents(value);
-    }
-
-    return allowedValues_.find(s) != allowedValues_.end();
-  }
-
-
-  std::string ListConstraint::Format() const
-  {
-    std::string s;
-
-    for (std::set<std::string>::const_iterator
-           it = allowedValues_.begin(); it != allowedValues_.end(); ++it)
-    {
-      if (!s.empty())
-      {
-        s += "\\";
-      }
-
-      s += *it;
     }
 
-    return s;
-  }
+    ResourceType GetLevel() const
+    {
+      return level_;
+    }
+
+    void Intersect(const std::list<int64_t>& resources);
+
+    void GoDown();
+
+    void Flatten(std::list<int64_t>& result);
+
+    void Flatten(std::list<std::string>& result);
+
+    void Clear()
+    {
+      resources_.reset(NULL);
+    }
+  };
 }

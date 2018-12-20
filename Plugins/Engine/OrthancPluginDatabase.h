@@ -57,6 +57,9 @@ namespace Orthanc
     void* payload_;
     IDatabaseListener* listener_;
 
+    bool      fastGetTotalSize_;
+    uint64_t  currentDiskSize_;
+
     std::list<std::string>         answerStrings_;
     std::list<int32_t>             answerInt32_;
     std::list<int64_t>             answerInt64_;
@@ -93,10 +96,7 @@ namespace Orthanc
                           size_t extensionsSize,
                           void *payload);
 
-    virtual void Open()
-    {
-      CheckSuccess(backend_.open(payload_));
-    }
+    virtual void Open();
 
     virtual void Close()
     {
@@ -207,18 +207,6 @@ namespace Orthanc
     virtual bool LookupGlobalProperty(std::string& target,
                                       GlobalProperty property);
 
-    virtual void LookupIdentifier(std::list<int64_t>& result,
-                                  ResourceType level,
-                                  const DicomTag& tag,
-                                  IdentifierConstraintType type,
-                                  const std::string& value);
-
-    virtual void LookupIdentifierRange(std::list<int64_t>& result,
-                                       ResourceType level,
-                                       const DicomTag& tag,
-                                       const std::string& start,
-                                       const std::string& end);
-
     virtual bool LookupMetadata(std::string& target,
                                 int64_t id,
                                 MetadataType type);
@@ -255,7 +243,7 @@ namespace Orthanc
     virtual void SetProtectedPatient(int64_t internalId, 
                                      bool isProtected);
 
-    virtual SQLite::ITransaction* StartTransaction();
+    virtual IDatabaseWrapper::ITransaction* StartTransaction();
 
     virtual void SetListener(IDatabaseListener& listener)
     {
@@ -268,6 +256,14 @@ namespace Orthanc
                          IStorageArea& storageArea);
 
     void AnswerReceived(const _OrthancPluginDatabaseAnswer& answer);
+
+    virtual bool IsDiskSizeAbove(uint64_t threshold);
+
+    virtual void ApplyLookupResources(std::vector<std::string>& patientsId,
+                                      std::vector<std::string>* instancesId,
+                                      const std::vector<DatabaseConstraint>& lookup,
+                                      ResourceType queryLevel,
+                                      size_t limit);
   };
 }
 
