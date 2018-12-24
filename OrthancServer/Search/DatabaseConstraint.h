@@ -33,47 +33,65 @@
 
 #pragma once
 
-#include "../IDatabaseWrapper.h"
-
-#include <set>
-#include <boost/noncopyable.hpp>
-#include <memory>
+#include "DicomTagConstraint.h"
 
 namespace Orthanc
 {
-  class SetOfResources : public boost::noncopyable
+  class DatabaseConstraint
   {
   private:
-    typedef std::set<int64_t>  Resources;
-
-    IDatabaseWrapper&         database_;
     ResourceType              level_;
-    std::auto_ptr<Resources>  resources_;
-    
+    DicomTag                  tag_;
+    bool                      isIdentifier_;
+    ConstraintType            constraintType_;
+    std::vector<std::string>  values_;
+    bool                      caseSensitive_;
+    bool                      mandatory_;
+
   public:
-    SetOfResources(IDatabaseWrapper& database,
-                   ResourceType level) : 
-      database_(database),
-      level_(level)
-    {
-    }
+    DatabaseConstraint(const DicomTagConstraint& constraint,
+                       ResourceType level,
+                       DicomTagType tagType);
 
     ResourceType GetLevel() const
     {
       return level_;
     }
 
-    void Intersect(const std::list<int64_t>& resources);
-
-    void GoDown();
-
-    void Flatten(std::list<int64_t>& result);
-
-    void Flatten(std::list<std::string>& result);
-
-    void Clear()
+    const DicomTag& GetTag() const
     {
-      resources_.reset(NULL);
+      return tag_;
     }
+
+    bool IsIdentifier() const
+    {
+      return isIdentifier_;
+    }
+
+    ConstraintType GetConstraintType() const
+    {
+      return constraintType_;
+    }
+
+    size_t GetValuesCount() const
+    {
+      return values_.size();
+    }
+
+    const std::string& GetValue(size_t index) const;
+
+    const std::string& GetSingleValue() const;
+
+    bool IsCaseSensitive() const
+    {
+      return caseSensitive_;
+    }
+
+    bool IsMandatory() const
+    {
+      return mandatory_;
+    }
+
+    bool IsMatch(const DicomMap& dicom) const;
   };
 }

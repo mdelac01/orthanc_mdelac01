@@ -56,14 +56,6 @@ namespace Orthanc
     StoreStatus_FilteredOut     // Removed by NewInstanceFilter
   };
 
-  enum IdentifierConstraintType
-  {
-    IdentifierConstraintType_Equal,
-    IdentifierConstraintType_SmallerOrEqual,
-    IdentifierConstraintType_GreaterOrEqual,
-    IdentifierConstraintType_Wildcard        /* Case sensitive, "*" or "?" are the only allowed wildcards */
-  };
-
   enum DicomTagType
   {
     DicomTagType_Identifier,   // Tag that whose value is stored and indexed in the DB
@@ -93,8 +85,7 @@ namespace Orthanc
     GlobalProperty_FlushSleep = 2,
     GlobalProperty_AnonymizationSequence = 3,
     GlobalProperty_JobsRegistry = 5,
-    GlobalProperty_TotalCompressedSize = 6,     // Reserved for Orthanc > 1.5.0
-    GlobalProperty_TotalUncompressedSize = 7,   // Reserved for Orthanc > 1.5.0
+    GlobalProperty_GetTotalSizeIsFast = 6,      // New in Orthanc 1.5.2
     GlobalProperty_Modalities = 20,             // New in Orthanc 1.5.0
     GlobalProperty_Peers = 21,                  // New in Orthanc 1.5.0
 
