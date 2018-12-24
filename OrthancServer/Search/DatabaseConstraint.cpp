@@ -31,41 +31,78 @@
  **/
 
 
-#pragma once
+#include "../PrecompiledHeadersServer.h"
+#include "DatabaseConstraint.h"
 
-#include "IFindConstraint.h"
-
-#include <set>
+#include "../../Core/OrthancException.h"
+#include "../ServerToolbox.h"
 
 namespace Orthanc
 {
-  class ListConstraint : public IFindConstraint
+  DatabaseConstraint::DatabaseConstraint(const DicomTagConstraint& constraint,
+                                         ResourceType level,
+                                         DicomTagType tagType) :
+    level_(level),
+    tag_(constraint.GetTag()),
+    constraintType_(constraint.GetConstraintType()),
+    mandatory_(constraint.IsMandatory())
   {
-  private:
-    std::set<std::string>  allowedValues_;
-    bool                   isCaseSensitive_;
-
-    ListConstraint(const ListConstraint& other) : 
-      allowedValues_(other.allowedValues_),
-      isCaseSensitive_(other.isCaseSensitive_)
+    switch (tagType)
     {
+      case DicomTagType_Identifier:
+        isIdentifier_ = true;
+        caseSensitive_ = true;
+        break;
+
+      case DicomTagType_Main:
+        isIdentifier_ = false;
+        caseSensitive_ = constraint.IsCaseSensitive();
+        break;
+
+      default:
+        throw OrthancException(ErrorCode_InternalError);
     }
 
-  public:
-    ListConstraint(bool isCaseSensitive) : 
-      isCaseSensitive_(isCaseSensitive)
+    values_.reserve(constraint.GetValues().size());
+      
+    for (std::set<std::string>::const_iterator
+           it = constraint.GetValues().begin();
+         it != constraint.GetValues().end(); ++it)
     {
+      if (isIdentifier_)
+      {
+        values_.push_back(ServerToolbox::NormalizeIdentifier(*it));
+      }
+      else
+      {
+        values_.push_back(*it);
+      }
     }
+  }
 
-    void AddAllowedValue(const std::string& value);
-
-    virtual IFindConstraint* Clone() const
+  
+  const std::string& DatabaseConstraint::GetValue(size_t index) const
+  {
+    if (index >= values_.size())
     {
-      return new ListConstraint(*this);
+      throw OrthancException(ErrorCode_ParameterOutOfRange);
     }
+    else
+    {
+      return values_[index];
+    }
+  }
 
-    virtual bool Match(const std::string& value) const;
 
-    virtual std::string Format() const;
-  };
+  const std::string& DatabaseConstraint::GetSingleValue() const
+  {
+    if (values_.size() != 1)
+    {
+      throw OrthancException(ErrorCode_BadSequenceOfCalls);
+    }
+    else
+    {
+      return values_[0];
+    }
+  }
 }

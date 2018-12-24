@@ -31,41 +31,23 @@
  **/
 
 
-#pragma once
+#include "../../PrecompiledHeadersServer.h"
+#include "CompatibilityDatabaseWrapper.h"
 
-#include "IFindConstraint.h"
-
-#include <set>
+#include "DatabaseLookup.h"
 
 namespace Orthanc
 {
-  class ListConstraint : public IFindConstraint
+  namespace Compatibility
   {
-  private:
-    std::set<std::string>  allowedValues_;
-    bool                   isCaseSensitive_;
-
-    ListConstraint(const ListConstraint& other) : 
-      allowedValues_(other.allowedValues_),
-      isCaseSensitive_(other.isCaseSensitive_)
+    void CompatibilityDatabaseWrapper::ApplyLookupResources(std::vector<std::string>& resourcesId,
+                                                            std::vector<std::string>* instancesId,
+                                                            const std::vector<DatabaseConstraint>& lookup,
+                                                            ResourceType queryLevel,
+                                                            size_t limit)
     {
+      Compatibility::DatabaseLookup compat(*this);
+      compat.ApplyLookupResources(resourcesId, instancesId, lookup, queryLevel, limit);
     }
-
-  public:
-    ListConstraint(bool isCaseSensitive) : 
-      isCaseSensitive_(isCaseSensitive)
-    {
-    }
-
-    void AddAllowedValue(const std::string& value);
-
-    virtual IFindConstraint* Clone() const
-    {
-      return new ListConstraint(*this);
-    }
-
-    virtual bool Match(const std::string& value) const;
-
-    virtual std::string Format() const;
-  };
+  }
 }

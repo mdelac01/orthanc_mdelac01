@@ -40,43 +40,38 @@
 
 namespace Orthanc
 {
+  class DatabaseConstraint;
+  
   class DicomTagConstraint : public boost::noncopyable
   {
   private:
     class NormalizedString;
     class RegularExpression;
 
-    bool                    hasTagInfo_;
-    DicomTagType            tagType_;
-    ResourceType            level_;
     DicomTag                tag_;
     ConstraintType          constraintType_;
     std::set<std::string>   values_;
     bool                    caseSensitive_;
+    bool                    mandatory_;
 
     boost::shared_ptr<RegularExpression>  regex_;
+
+    void AssignSingleValue(const std::string& value);
 
   public:
     DicomTagConstraint(const DicomTag& tag,
                        ConstraintType type,
                        const std::string& value,
-                       bool caseSensitive);
+                       bool caseSensitive,
+                       bool mandatory);
 
+    // For list search
     DicomTagConstraint(const DicomTag& tag,
                        ConstraintType type,
-                       bool caseSensitive);
+                       bool caseSensitive,
+                       bool mandatory);
 
-    bool HasTagInfo() const
-    {
-      return hasTagInfo_;
-    }
-
-    void SetTagInfo(DicomTagType tagType,
-                    ResourceType level);
-
-    DicomTagType GetTagType() const;
-
-    const ResourceType GetLevel() const;
+    DicomTagConstraint(const DatabaseConstraint& constraint);
 
     const DicomTag& GetTag() const
     {
@@ -91,6 +86,16 @@ namespace Orthanc
     bool IsCaseSensitive() const
     {
       return caseSensitive_;
+    }
+
+    void SetCaseSensitive(bool caseSensitive)
+    {
+      caseSensitive_ = caseSensitive;
+    }
+
+    bool IsMandatory() const
+    {
+      return mandatory_;
     }
 
     void AddValue(const std::string& value);

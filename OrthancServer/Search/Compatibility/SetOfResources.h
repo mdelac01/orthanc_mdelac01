@@ -33,39 +33,49 @@
 
 #pragma once
 
-#include "IFindConstraint.h"
+#include "CompatibilityDatabaseWrapper.h"
 
 #include <set>
+#include <memory>
 
 namespace Orthanc
 {
-  class ListConstraint : public IFindConstraint
+  namespace Compatibility
   {
-  private:
-    std::set<std::string>  allowedValues_;
-    bool                   isCaseSensitive_;
-
-    ListConstraint(const ListConstraint& other) : 
-      allowedValues_(other.allowedValues_),
-      isCaseSensitive_(other.isCaseSensitive_)
+    class SetOfResources : public boost::noncopyable
     {
-    }
+    private:
+      typedef std::set<int64_t>  Resources;
 
-  public:
-    ListConstraint(bool isCaseSensitive) : 
-      isCaseSensitive_(isCaseSensitive)
-    {
-    }
+      CompatibilityDatabaseWrapper&  database_;
+      ResourceType                   level_;
+      std::auto_ptr<Resources>       resources_;
+    
+    public:
+      SetOfResources(CompatibilityDatabaseWrapper& database,
+                     ResourceType level) : 
+        database_(database),
+        level_(level)
+      {
+      }
 
-    void AddAllowedValue(const std::string& value);
+      ResourceType GetLevel() const
+      {
+        return level_;
+      }
 
-    virtual IFindConstraint* Clone() const
-    {
-      return new ListConstraint(*this);
-    }
+      void Intersect(const std::list<int64_t>& resources);
 
-    virtual bool Match(const std::string& value) const;
+      void GoDown();
 
-    virtual std::string Format() const;
-  };
+      void Flatten(std::list<int64_t>& result);
+
+      void Flatten(std::list<std::string>& result);
+
+      void Clear()
+      {
+        resources_.reset(NULL);
+      }
+    };
+  }
 }

@@ -33,39 +33,28 @@
 
 #pragma once
 
-#include "IFindConstraint.h"
-
-#include <set>
+#include "CompatibilityDatabaseWrapper.h"
 
 namespace Orthanc
 {
-  class ListConstraint : public IFindConstraint
+  namespace Compatibility
   {
-  private:
-    std::set<std::string>  allowedValues_;
-    bool                   isCaseSensitive_;
-
-    ListConstraint(const ListConstraint& other) : 
-      allowedValues_(other.allowedValues_),
-      isCaseSensitive_(other.isCaseSensitive_)
+    class DatabaseLookup : public boost::noncopyable
     {
-    }
+    private:
+      CompatibilityDatabaseWrapper&  database_;
 
-  public:
-    ListConstraint(bool isCaseSensitive) : 
-      isCaseSensitive_(isCaseSensitive)
-    {
-    }
+    public:
+      DatabaseLookup(CompatibilityDatabaseWrapper& database) :
+        database_(database)
+      {
+      }
 
-    void AddAllowedValue(const std::string& value);
-
-    virtual IFindConstraint* Clone() const
-    {
-      return new ListConstraint(*this);
-    }
-
-    virtual bool Match(const std::string& value) const;
-
-    virtual std::string Format() const;
-  };
+      void ApplyLookupResources(std::vector<std::string>& resourcesId,
+                                std::vector<std::string>* instancesId,
+                                const std::vector<DatabaseConstraint>& lookup,
+                                ResourceType queryLevel,
+                                size_t limit);
+    };
+  }
 }
