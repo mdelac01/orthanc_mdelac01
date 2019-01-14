@@ -33,24 +33,32 @@
 
 #pragma once
 
-#include <string>
-#include "ServerEnumerations.h"
-#include "ServerIndexChange.h"
+#include "../IDatabaseWrapper.h"
 
 namespace Orthanc
 {
-  class IDatabaseListener
+  namespace Compatibility
   {
-  public:
-    virtual ~IDatabaseListener()
+    class ICreateInstance : public boost::noncopyable
     {
-    }
+    public:
+      virtual bool LookupResource(int64_t& id,
+                                  ResourceType& type,
+                                  const std::string& publicId) = 0;
 
-    virtual void SignalRemainingAncestor(ResourceType parentType,
-                                         const std::string& publicId) = 0;
+      virtual int64_t CreateResource(const std::string& publicId,
+                                     ResourceType type) = 0;
 
-    virtual void SignalFileDeleted(const FileInfo& info) = 0;
-
-    virtual void SignalChange(const ServerIndexChange& change) = 0;
-  };
+      virtual void AttachChild(int64_t parent,
+                               int64_t child) = 0;
+      
+      static bool Apply(ICreateInstance& database,
+                        IDatabaseWrapper::CreateInstanceResult& result,
+                        int64_t& instanceId,
+                        const std::string& patient,
+                        const std::string& study,
+                        const std::string& series,
+                        const std::string& instance);
+    };
+  }
 }
