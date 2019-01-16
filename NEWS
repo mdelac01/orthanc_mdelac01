@@ -1,6 +1,16 @@
 Pending changes in the mainline
 ===============================
 
+REST API
+--------
+
+* More consistent handling of the "Last" field returned by the "/changes" URI
+
+Plugins
+-------
+
+* New primitives to speed up databases (custom index plugins)
+
 Maintenance
 -----------
 
@@ -9,6 +19,7 @@ Maintenance
 * Compatibility with DCMTK 3.6.4
 * Fix issue #21 (DICOM files missing after uploading with Firefox)
 * Fix issue #32 (HTTP keep-alive is now enabled by default)
+* Fix issue #58 (Patient recycling order should be defined by their received last instance)
 * Fix issue #118 (Wording in Configuration.json regarding SynchronousCMove)
 * Fix issue #124 (GET /studies/ID/media fails for certain dicom file)
 * Fix issue #125 (Mongoose: /instances/{id} returns 500 on invalid HTTP Method)
