@@ -36,6 +36,7 @@
 
 #include "../Core/DicomNetworking/DicomFindAnswers.h"
 #include "../Core/DicomParsing/DicomModification.h"
+#include "../Core/DicomParsing/DicomWebJsonVisitor.h"
 #include "../Core/DicomParsing/FromDcmtkBridge.h"
 #include "../Core/DicomParsing/Internals/DicomImageDecoder.h"
 #include "../Core/DicomParsing/ToDcmtkBridge.h"
@@ -53,6 +54,11 @@
 
 #include <dcmtk/dcmdata/dcelem.h>
 #include <dcmtk/dcmdata/dcdeftag.h>
+#include <boost/algorithm/string/predicate.hpp>
+
+#if ORTHANC_ENABLE_PUGIXML == 1
+#  include <pugixml.hpp>
+#endif
 
 using namespace Orthanc;
 
@@ -217,7 +223,7 @@ TEST(FromDcmtkBridge, Encodings1)
   {
     std::string source(testEncodingsEncoded[i]);
     std::string expected(testEncodingsExpected[i]);
-    std::string s = Toolbox::ConvertToUtf8(source, testEncodings[i]);
+    std::string s = Toolbox::ConvertToUtf8(source, testEncodings[i], false);
     //std::cout << EnumerationToString(testEncodings[i]) << std::endl;
     EXPECT_EQ(expected, s);
   }
@@ -260,9 +266,10 @@ TEST(FromDcmtkBridge, Enumerations)
   ASSERT_TRUE(GetDicomEncoding(e, "ISO 2022 IR 166"));  ASSERT_EQ(Encoding_Thai, e);
 
   // http://dicom.nema.org/medical/dicom/current/output/html/part03.html#table_C.12-4
-  ASSERT_FALSE(GetDicomEncoding(e, "ISO 2022 IR 87"));   //ASSERT_EQ(Encoding_JapaneseKanji, e);
+  ASSERT_TRUE(GetDicomEncoding(e, "ISO 2022 IR 87"));    ASSERT_EQ(Encoding_JapaneseKanji, e);
   ASSERT_FALSE(GetDicomEncoding(e, "ISO 2022 IR 159"));  //ASSERT_EQ(Encoding_JapaneseKanjiSupplementary, e);
-  ASSERT_FALSE(GetDicomEncoding(e, "ISO 2022 IR 149"));  //ASSERT_EQ(Encoding_Korean, e);
+  ASSERT_TRUE(GetDicomEncoding(e, "ISO 2022 IR 149"));   ASSERT_EQ(Encoding_Korean, e);
+  ASSERT_TRUE(GetDicomEncoding(e, "ISO 2022 IR 58"));    ASSERT_EQ(Encoding_SimplifiedChinese, e);
 
   // http://dicom.nema.org/medical/dicom/current/output/html/part03.html#table_C.12-5
   ASSERT_TRUE(GetDicomEncoding(e, "ISO_IR 192"));  ASSERT_EQ(Encoding_Utf8, e);
@@ -282,7 +289,7 @@ TEST(FromDcmtkBridge, Encodings3)
       ParsedDicomFile f(true);
       f.SetEncoding(testEncodings[i]);
 
-      std::string s = Toolbox::ConvertToUtf8(testEncodingsEncoded[i], testEncodings[i]);
+      std::string s = Toolbox::ConvertToUtf8(testEncodingsEncoded[i], testEncodings[i], false);
       f.Insert(DICOM_TAG_PATIENT_NAME, s, false);
       f.SaveToMemoryBuffer(dicom);
     }
@@ -293,7 +300,9 @@ TEST(FromDcmtkBridge, Encodings3)
 
       if (testEncodings[i] != Encoding_Ascii)
       {
-        ASSERT_EQ(testEncodings[i], g.GetEncoding());
+        bool hasCodeExtensions;
+        ASSERT_EQ(testEncodings[i], g.DetectEncoding(hasCodeExtensions));
+        ASSERT_FALSE(hasCodeExtensions);
       }
 
       std::string tag;
@@ -405,16 +414,16 @@ namespace Orthanc
       ignoreTagLength.insert(DICOM_TAG_PATIENT_ID);
 
       FromDcmtkBridge::ElementToJson(b, *element, DicomToJsonFormat_Short,
-                                     DicomToJsonFlags_Default, 0, Encoding_Ascii, ignoreTagLength);
+                                     DicomToJsonFlags_Default, 0, Encoding_Ascii, false, ignoreTagLength);
       ASSERT_TRUE(b.isMember("0010,0010"));
       ASSERT_EQ("Hello", b["0010,0010"].asString());
 
       FromDcmtkBridge::ElementToJson(b, *element, DicomToJsonFormat_Short,
-                                     DicomToJsonFlags_Default, 3, Encoding_Ascii, ignoreTagLength);
+                                     DicomToJsonFlags_Default, 3, Encoding_Ascii, false, ignoreTagLength);
       ASSERT_TRUE(b["0010,0010"].isNull()); // "Hello" has more than 3 characters
 
       FromDcmtkBridge::ElementToJson(b, *element, DicomToJsonFormat_Full,
-                                     DicomToJsonFlags_Default, 3, Encoding_Ascii, ignoreTagLength);
+                                     DicomToJsonFlags_Default, 3, Encoding_Ascii, false, ignoreTagLength);
       ASSERT_TRUE(b["0010,0010"].isObject());
       ASSERT_EQ("PatientName", b["0010,0010"]["Name"].asString());
       ASSERT_EQ("TooLong", b["0010,0010"]["Type"].asString());
@@ -422,7 +431,7 @@ namespace Orthanc
 
       ignoreTagLength.insert(DICOM_TAG_PATIENT_NAME);
       FromDcmtkBridge::ElementToJson(b, *element, DicomToJsonFormat_Short,
-                                     DicomToJsonFlags_Default, 3, Encoding_Ascii, ignoreTagLength);
+                                     DicomToJsonFlags_Default, 3, Encoding_Ascii, false, ignoreTagLength);
       ASSERT_EQ("Hello", b["0010,0010"].asString());
     }
 
@@ -448,7 +457,7 @@ namespace Orthanc
       Json::Value b;
       std::set<DicomTag> ignoreTagLength;
       FromDcmtkBridge::ElementToJson(b, *element, DicomToJsonFormat_Short,
-                                     DicomToJsonFlags_Default, 0, Encoding_Ascii, ignoreTagLength);
+                                     DicomToJsonFlags_Default, 0, Encoding_Ascii, false, ignoreTagLength);
       ASSERT_EQ("Hello", b["0010,0010"].asString());
     }
 
@@ -461,7 +470,7 @@ namespace Orthanc
         Json::Value b;
         std::set<DicomTag> ignoreTagLength;
         FromDcmtkBridge::ElementToJson(b, *element, DicomToJsonFormat_Short,
-                                       DicomToJsonFlags_Default, 0, Encoding_Ascii, ignoreTagLength);
+                                       DicomToJsonFlags_Default, 0, Encoding_Ascii, false, ignoreTagLength);
         ASSERT_EQ(Json::arrayValue, b["0008,1110"].type());
         ASSERT_EQ(2u, b["0008,1110"].size());
       
@@ -480,7 +489,7 @@ namespace Orthanc
         Json::Value b;
         std::set<DicomTag> ignoreTagLength;
         FromDcmtkBridge::ElementToJson(b, *element, DicomToJsonFormat_Full,
-                                       DicomToJsonFlags_Default, 0, Encoding_Ascii, ignoreTagLength);
+                                       DicomToJsonFlags_Default, 0, Encoding_Ascii, false, ignoreTagLength);
 
         Json::Value c;
         ServerToolbox::SimplifyTags(c, b, DicomToJsonFormat_Human);
@@ -599,10 +608,12 @@ TEST(ParsedDicomFile, JsonEncoding)
 
       if (testEncodings[i] != Encoding_Ascii)
       {
-        ASSERT_EQ(testEncodings[i], f.GetEncoding());
+        bool hasCodeExtensions;
+        ASSERT_EQ(testEncodings[i], f.DetectEncoding(hasCodeExtensions));
+        ASSERT_FALSE(hasCodeExtensions);
       }
 
-      Json::Value s = Toolbox::ConvertToUtf8(testEncodingsEncoded[i], testEncodings[i]);
+      Json::Value s = Toolbox::ConvertToUtf8(testEncodingsEncoded[i], testEncodings[i], false);
       f.Replace(DICOM_TAG_PATIENT_NAME, s, false, DicomReplaceMode_InsertIfAbsent);
 
       Json::Value v;
@@ -1161,7 +1172,7 @@ TEST(ParsedDicomFile, DicomMapEncodings2)
         // Sanity check to test the proper behavior of "EncodingTests.py"
         std::string encoded = Toolbox::ConvertFromUtf8(testEncodingsExpected[i], testEncodings[i]);
         ASSERT_STREQ(testEncodingsEncoded[i], encoded.c_str());
-        std::string decoded = Toolbox::ConvertToUtf8(encoded, testEncodings[i]);
+        std::string decoded = Toolbox::ConvertToUtf8(encoded, testEncodings[i], false);
         ASSERT_STREQ(testEncodingsExpected[i], decoded.c_str());
 
         if (testEncodings[i] != Encoding_Chinese)
@@ -1169,7 +1180,7 @@ TEST(ParsedDicomFile, DicomMapEncodings2)
           // A specific source string is used in "EncodingTests.py" to
           // test against Chinese, it is normal that it does not correspond to UTF8
 
-          std::string encoded = Toolbox::ConvertToUtf8(Toolbox::ConvertFromUtf8(utf8, testEncodings[i]), testEncodings[i]);
+          std::string encoded = Toolbox::ConvertToUtf8(Toolbox::ConvertFromUtf8(utf8, testEncodings[i]), testEncodings[i], false);
           ASSERT_STREQ(testEncodingsExpected[i], encoded.c_str());
         }
       }
@@ -1227,7 +1238,9 @@ TEST(ParsedDicomFile, ChangeEncoding)
       std::string tag;
 
       ParsedDicomFile dicom(m, Encoding_Utf8);
-      ASSERT_EQ(Encoding_Utf8, dicom.GetEncoding());
+      bool hasCodeExtensions;
+      ASSERT_EQ(Encoding_Utf8, dicom.DetectEncoding(hasCodeExtensions));
+      ASSERT_FALSE(hasCodeExtensions);
       ASSERT_TRUE(dicom.GetTagValue(tag, DICOM_TAG_PATIENT_NAME));
       ASSERT_EQ(tag, testEncodingsExpected[i]);
 
@@ -1240,7 +1253,8 @@ TEST(ParsedDicomFile, ChangeEncoding)
 
       dicom.ChangeEncoding(testEncodings[i]);
 
-      ASSERT_EQ(testEncodings[i], dicom.GetEncoding());
+      ASSERT_EQ(testEncodings[i], dicom.DetectEncoding(hasCodeExtensions));
+      ASSERT_FALSE(hasCodeExtensions);
       
       const char* c = NULL;
       ASSERT_TRUE(dicom.GetDcmtkObject().getDataset()->findAndGetString(DCM_PatientName, c).good());
@@ -1275,7 +1289,10 @@ TEST(ParsedDicomFile, InvalidCharacterSets)
     m.SetValue(DICOM_TAG_PATIENT_NAME, "HELLO", false);
 
     ParsedDicomFile d(m, Encoding_Latin3 /* default encoding */);
-    ASSERT_EQ(Encoding_Latin3, d.GetEncoding());
+
+    bool hasCodeExtensions;
+    ASSERT_EQ(Encoding_Latin3, d.DetectEncoding(hasCodeExtensions));
+    ASSERT_FALSE(hasCodeExtensions);
   }
   
   {
@@ -1285,7 +1302,10 @@ TEST(ParsedDicomFile, InvalidCharacterSets)
     m.SetValue(DICOM_TAG_PATIENT_NAME, "HELLO", false);
 
     ParsedDicomFile d(m, Encoding_Latin3 /* default encoding */);
-    ASSERT_EQ(Encoding_Japanese, d.GetEncoding());
+
+    bool hasCodeExtensions;
+    ASSERT_EQ(Encoding_Japanese, d.DetectEncoding(hasCodeExtensions));
+    ASSERT_FALSE(hasCodeExtensions);
   }
   
   {
@@ -1314,6 +1334,528 @@ TEST(ParsedDicomFile, InvalidCharacterSets)
     m.SetValue(DICOM_TAG_PATIENT_NAME, "HELLO", false);
 
     ParsedDicomFile d(m, Encoding_Latin3 /* default encoding */);
-    ASSERT_EQ(Encoding_Latin3, d.GetEncoding());
+
+    bool hasCodeExtensions;
+    ASSERT_EQ(Encoding_Latin3, d.DetectEncoding(hasCodeExtensions));
+    ASSERT_FALSE(hasCodeExtensions);
   }
 }
+
+
+
+TEST(Toolbox, RemoveIso2022EscapeSequences)
+{
+  // +----------------------------------+
+  // | one-byte control messages        |
+  // +----------------------------------+
+
+  static const uint8_t iso2022_cstr_oneByteControl[] = {
+    0x0f, 0x41, 
+    0x0e, 0x42, 
+    0x8e, 0x1b, 0x4e, 0x43, 
+    0x8f, 0x1b, 0x4f, 0x44,
+    0x8e, 0x1b, 0x4a, 0x45, 
+    0x8f, 0x1b, 0x4a, 0x46,
+    0x50, 0x51, 0x52, 0x00
+  };
+  
+  static const uint8_t iso2022_cstr_oneByteControl_ref[] = {
+    0x41,
+    0x42,
+    0x43,
+    0x44,
+    0x8e, 0x1b, 0x4a, 0x45, 
+    0x8f, 0x1b, 0x4a, 0x46,
+    0x50, 0x51, 0x52, 0x00
+  };
+
+  // +----------------------------------+
+  // | two-byte control messages        |
+  // +----------------------------------+
+
+  static const uint8_t iso2022_cstr_twoByteControl[] = {
+    0x1b, 0x6e, 0x41,
+    0x1b, 0x6f, 0x42,
+    0x1b, 0x4e, 0x43,
+    0x1b, 0x4f, 0x44,
+    0x1b, 0x7e, 0x45,
+    0x1b, 0x7d, 0x46,
+    0x1b, 0x7c, 0x47, 0x00
+  };
+  
+  static const uint8_t iso2022_cstr_twoByteControl_ref[] = {
+    0x41,
+    0x42,
+    0x43,
+    0x44,
+    0x45,
+    0x46,
+    0x47, 0x00
+  };
+
+  // +----------------------------------+
+  // | various-length escape sequences  |
+  // +----------------------------------+
+
+  static const uint8_t iso2022_cstr_escapeSequence[] = {
+    0x1b, 0x40, 0x41, // 1b and 40 should not be removed (invalid esc seq)
+    0x1b, 0x50, 0x42, // ditto 
+    0x1b, 0x7f, 0x43, // ditto
+    0x1b, 0x21, 0x4a, 0x44, // this will match
+    0x1b, 0x20, 0x21, 0x2f, 0x40, 0x45, // this will match
+    0x1b, 0x20, 0x21, 0x2f, 0x2f, 0x40, 0x46, // this will match too
+    0x1b, 0x20, 0x21, 0x2f, 0x1f, 0x47, 0x48, 0x00 // this will NOT match!
+  };
+  
+  static const uint8_t iso2022_cstr_escapeSequence_ref[] = {
+    0x1b, 0x40, 0x41, // 1b and 40 should not be removed (invalid esc seq)
+    0x1b, 0x50, 0x42, // ditto 
+    0x1b, 0x7f, 0x43, // ditto
+    0x44, // this will match
+    0x45, // this will match
+    0x46, // this will match too
+    0x1b, 0x20, 0x21, 0x2f, 0x1f, 0x47, 0x48, 0x00 // this will NOT match!
+  };
+
+  
+  // +----------------------------------+
+  // | a real-world japanese sample     |
+  // +----------------------------------+
+
+  static const uint8_t iso2022_cstr_real_ir13[] = {
+    0xd4, 0xcf, 0xc0, 0xde, 0x5e, 0xc0, 0xdb, 0xb3,
+    0x3d, 0x1b, 0x24, 0x42, 0x3b, 0x33, 0x45, 0x44,
+    0x1b, 0x28, 0x4a, 0x5e, 0x1b, 0x24, 0x42, 0x42,
+    0x40, 0x4f, 0x3a, 0x1b, 0x28, 0x4a, 0x3d, 0x1b,
+    0x24, 0x42, 0x24, 0x64, 0x24, 0x5e, 0x24, 0x40,
+    0x1b, 0x28, 0x4a, 0x5e, 0x1b, 0x24, 0x42, 0x24,
+    0x3f, 0x24, 0x6d, 0x24, 0x26, 0x1b, 0x28, 0x4a, 0x00
+  };
+
+  static const uint8_t iso2022_cstr_real_ir13_ref[] = {
+    0xd4, 0xcf, 0xc0, 0xde, 0x5e, 0xc0, 0xdb, 0xb3,
+    0x3d,
+    0x3b, 0x33, 0x45, 0x44,
+    0x5e,
+    0x42,
+    0x40, 0x4f, 0x3a,
+    0x3d,
+    0x24, 0x64, 0x24, 0x5e, 0x24, 0x40,
+    0x5e,
+    0x24,
+    0x3f, 0x24, 0x6d, 0x24, 0x26, 0x00
+  };
+
+
+
+  // +----------------------------------+
+  // | the actual test                  |
+  // +----------------------------------+
+
+  std::string iso2022_str_oneByteControl(
+    reinterpret_cast<const char*>(iso2022_cstr_oneByteControl));
+  std::string iso2022_str_oneByteControl_ref(
+    reinterpret_cast<const char*>(iso2022_cstr_oneByteControl_ref));
+  std::string iso2022_str_twoByteControl(
+    reinterpret_cast<const char*>(iso2022_cstr_twoByteControl));
+  std::string iso2022_str_twoByteControl_ref(
+    reinterpret_cast<const char*>(iso2022_cstr_twoByteControl_ref));
+  std::string iso2022_str_escapeSequence(
+    reinterpret_cast<const char*>(iso2022_cstr_escapeSequence));
+  std::string iso2022_str_escapeSequence_ref(
+    reinterpret_cast<const char*>(iso2022_cstr_escapeSequence_ref));
+  std::string iso2022_str_real_ir13(
+    reinterpret_cast<const char*>(iso2022_cstr_real_ir13));
+  std::string iso2022_str_real_ir13_ref(
+    reinterpret_cast<const char*>(iso2022_cstr_real_ir13_ref));
+
+  std::string dest;
+
+  Toolbox::RemoveIso2022EscapeSequences(dest, iso2022_str_oneByteControl);
+  ASSERT_EQ(dest, iso2022_str_oneByteControl_ref);
+
+  Toolbox::RemoveIso2022EscapeSequences(dest, iso2022_str_twoByteControl);
+  ASSERT_EQ(dest, iso2022_str_twoByteControl_ref);
+
+  Toolbox::RemoveIso2022EscapeSequences(dest, iso2022_str_escapeSequence);
+  ASSERT_EQ(dest, iso2022_str_escapeSequence_ref);
+
+  Toolbox::RemoveIso2022EscapeSequences(dest, iso2022_str_real_ir13);
+  ASSERT_EQ(dest, iso2022_str_real_ir13_ref);
+}
+
+
+
+static std::string DecodeFromSpecification(const std::string& s)
+{
+  std::vector<std::string> tokens;
+  Toolbox::TokenizeString(tokens, s, ' ');
+
+  std::string result;
+  result.resize(tokens.size());
+  
+  for (size_t i = 0; i < tokens.size(); i++)
+  {
+    std::vector<std::string> components;
+    Toolbox::TokenizeString(components, tokens[i], '/');
+
+    if (components.size() != 2)
+    {
+      throw;
+    }
+
+    int a = boost::lexical_cast<int>(components[0]);
+    int b = boost::lexical_cast<int>(components[1]);
+    if (a < 0 || a > 15 ||
+        b < 0 || b > 15 ||
+        (a == 0 && b == 0))
+    {
+      throw;
+    }
+
+    result[i] = static_cast<uint8_t>(a * 16 + b);
+  }
+
+  return result;
+}
+
+
+
+TEST(Toolbox, EncodingsKorean)
+{
+  // http://dicom.nema.org/MEDICAL/dicom/current/output/chtml/part05/sect_I.2.html
+
+  std::string korean = DecodeFromSpecification(
+    "04/08 06/15 06/14 06/07 05/14 04/07 06/09 06/12 06/04 06/15 06/14 06/07 03/13 "
+    "01/11 02/04 02/09 04/03 15/11 15/03 05/14 01/11 02/04 02/09 04/03 13/01 12/14 "
+    "13/04 13/07 03/13 01/11 02/04 02/09 04/03 12/08 10/11 05/14 01/11 02/04 02/09 "
+    "04/03 11/01 14/06 11/05 11/15");
+
+  // This array can be re-generated using command-line:
+  // echo -n "Hong^Gildong=..." | hexdump -v -e '14/1 "0x%02x, "' -e '"\n"'
+  static const uint8_t utf8raw[] = {
+    0x48, 0x6f, 0x6e, 0x67, 0x5e, 0x47, 0x69, 0x6c, 0x64, 0x6f, 0x6e, 0x67, 0x3d, 0xe6,
+    0xb4, 0xaa, 0x5e, 0xe5, 0x90, 0x89, 0xe6, 0xb4, 0x9e, 0x3d, 0xed, 0x99, 0x8d, 0x5e,
+    0xea, 0xb8, 0xb8, 0xeb, 0x8f, 0x99
+  };
+
+  std::string utf8(reinterpret_cast<const char*>(utf8raw), sizeof(utf8raw));
+
+  ParsedDicomFile dicom(false);
+  dicom.ReplacePlainString(DICOM_TAG_SPECIFIC_CHARACTER_SET, "\\ISO 2022 IR 149");
+  ASSERT_TRUE(dicom.GetDcmtkObject().getDataset()->putAndInsertString
+              (DCM_PatientName, korean.c_str(), OFBool(true)).good());
+
+  bool hasCodeExtensions;
+  Encoding encoding = dicom.DetectEncoding(hasCodeExtensions);
+  ASSERT_EQ(Encoding_Korean, encoding);
+  ASSERT_TRUE(hasCodeExtensions);
+  
+  std::string value;
+  ASSERT_TRUE(dicom.GetTagValue(value, DICOM_TAG_PATIENT_NAME));
+  ASSERT_EQ(utf8, value);
+  
+  DicomWebJsonVisitor visitor;
+  dicom.Apply(visitor);
+  ASSERT_EQ(utf8.substr(0, 12), visitor.GetResult()["00100010"]["Value"][0]["Alphabetic"].asString());
+  ASSERT_EQ(utf8.substr(13, 10), visitor.GetResult()["00100010"]["Value"][0]["Ideographic"].asString());
+  ASSERT_EQ(utf8.substr(24), visitor.GetResult()["00100010"]["Value"][0]["Phonetic"].asString());
+
+#if ORTHANC_ENABLE_PUGIXML == 1
+  // http://dicom.nema.org/medical/dicom/current/output/chtml/part18/sect_F.3.html#table_F.3.1-1
+  std::string xml;
+  visitor.FormatXml(xml);
+
+  pugi::xml_document doc;
+  doc.load_buffer(xml.c_str(), xml.size());
+
+  pugi::xpath_node node = doc.select_single_node("//NativeDicomModel/DicomAttribute[@tag=\"00080005\"]/Value");
+  ASSERT_STREQ("ISO_IR 192", node.node().text().as_string());
+
+  node = doc.select_single_node("//NativeDicomModel/DicomAttribute[@tag=\"00080005\"]");
+  ASSERT_STREQ("CS", node.node().attribute("vr").value());
+
+  node = doc.select_single_node("//NativeDicomModel/DicomAttribute[@tag=\"00100010\"]");
+  ASSERT_STREQ("PN", node.node().attribute("vr").value());
+
+  node = doc.select_single_node("//NativeDicomModel/DicomAttribute[@tag=\"00100010\"]/PersonName/Alphabetic/FamilyName");
+  ASSERT_STREQ("Hong", node.node().text().as_string());
+
+  node = doc.select_single_node("//NativeDicomModel/DicomAttribute[@tag=\"00100010\"]/PersonName/Alphabetic/GivenName");
+  ASSERT_STREQ("Gildong", node.node().text().as_string());
+
+  node = doc.select_single_node("//NativeDicomModel/DicomAttribute[@tag=\"00100010\"]/PersonName/Ideographic/FamilyName");
+  ASSERT_EQ(utf8.substr(13, 3), node.node().text().as_string());
+
+  node = doc.select_single_node("//NativeDicomModel/DicomAttribute[@tag=\"00100010\"]/PersonName/Ideographic/GivenName");
+  ASSERT_EQ(utf8.substr(17, 6), node.node().text().as_string());
+
+  node = doc.select_single_node("//NativeDicomModel/DicomAttribute[@tag=\"00100010\"]/PersonName/Phonetic/FamilyName");
+  ASSERT_EQ(utf8.substr(24, 3), node.node().text().as_string());
+
+  node = doc.select_single_node("//NativeDicomModel/DicomAttribute[@tag=\"00100010\"]/PersonName/Phonetic/GivenName");
+  ASSERT_EQ(utf8.substr(28), node.node().text().as_string());
+#endif  
+}
+
+
+
+TEST(Toolbox, EncodingsJapaneseKanji)
+{
+  // http://dicom.nema.org/MEDICAL/dicom/current/output/chtml/part05/sect_H.3.html
+
+  std::string japanese = DecodeFromSpecification(
+    "05/09 06/01 06/13 06/01 06/04 06/01 05/14 05/04 06/01 07/02 06/15 07/05 03/13 "
+    "01/11 02/04 04/02 03/11 03/03 04/05 04/04 01/11 02/08 04/02 05/14 01/11 02/04 "
+    "04/02 04/02 04/00 04/15 03/10 01/11 02/08 04/02 03/13 01/11 02/04 04/02 02/04 "
+    "06/04 02/04 05/14 02/04 04/00 01/11 02/08 04/02 05/14 01/11 02/04 04/02 02/04 "
+    "03/15 02/04 06/13 02/04 02/06 01/11 02/08 04/02");
+
+  // This array can be re-generated using command-line:
+  // echo -n "Yamada^Tarou=..." | hexdump -v -e '14/1 "0x%02x, "' -e '"\n"'
+  static const uint8_t utf8raw[] = {
+    0x59, 0x61, 0x6d, 0x61, 0x64, 0x61, 0x5e, 0x54, 0x61, 0x72, 0x6f, 0x75, 0x3d, 0xe5,
+    0xb1, 0xb1, 0xe7, 0x94, 0xb0, 0x5e, 0xe5, 0xa4, 0xaa, 0xe9, 0x83, 0x8e, 0x3d, 0xe3,
+    0x82, 0x84, 0xe3, 0x81, 0xbe, 0xe3, 0x81, 0xa0, 0x5e, 0xe3, 0x81, 0x9f, 0xe3, 0x82,
+    0x8d, 0xe3, 0x81, 0x86
+  };
+
+  std::string utf8(reinterpret_cast<const char*>(utf8raw), sizeof(utf8raw));
+
+  ParsedDicomFile dicom(false);
+  dicom.ReplacePlainString(DICOM_TAG_SPECIFIC_CHARACTER_SET, "\\ISO 2022 IR 87");
+  ASSERT_TRUE(dicom.GetDcmtkObject().getDataset()->putAndInsertString
+              (DCM_PatientName, japanese.c_str(), OFBool(true)).good());
+
+  bool hasCodeExtensions;
+  Encoding encoding = dicom.DetectEncoding(hasCodeExtensions);
+  ASSERT_EQ(Encoding_JapaneseKanji, encoding);
+  ASSERT_TRUE(hasCodeExtensions);
+
+  std::string value;
+  ASSERT_TRUE(dicom.GetTagValue(value, DICOM_TAG_PATIENT_NAME));
+  ASSERT_EQ(utf8, value);
+  
+  DicomWebJsonVisitor visitor;
+  dicom.Apply(visitor);
+  ASSERT_EQ(utf8.substr(0, 12), visitor.GetResult()["00100010"]["Value"][0]["Alphabetic"].asString());
+  ASSERT_EQ(utf8.substr(13, 13), visitor.GetResult()["00100010"]["Value"][0]["Ideographic"].asString());
+  ASSERT_EQ(utf8.substr(27), visitor.GetResult()["00100010"]["Value"][0]["Phonetic"].asString());
+
+#if ORTHANC_ENABLE_PUGIXML == 1
+  // http://dicom.nema.org/medical/dicom/current/output/chtml/part18/sect_F.3.html#table_F.3.1-1
+  std::string xml;
+  visitor.FormatXml(xml);
+
+  pugi::xml_document doc;
+  doc.load_buffer(xml.c_str(), xml.size());
+
+  pugi::xpath_node node = doc.select_single_node("//NativeDicomModel/DicomAttribute[@tag=\"00080005\"]/Value");
+  ASSERT_STREQ("ISO_IR 192", node.node().text().as_string());
+
+  node = doc.select_single_node("//NativeDicomModel/DicomAttribute[@tag=\"00080005\"]");
+  ASSERT_STREQ("CS", node.node().attribute("vr").value());
+
+  node = doc.select_single_node("//NativeDicomModel/DicomAttribute[@tag=\"00100010\"]");
+  ASSERT_STREQ("PN", node.node().attribute("vr").value());
+
+  node = doc.select_single_node("//NativeDicomModel/DicomAttribute[@tag=\"00100010\"]/PersonName/Alphabetic/FamilyName");
+  ASSERT_STREQ("Yamada", node.node().text().as_string());
+
+  node = doc.select_single_node("//NativeDicomModel/DicomAttribute[@tag=\"00100010\"]/PersonName/Alphabetic/GivenName");
+  ASSERT_STREQ("Tarou", node.node().text().as_string());
+
+  node = doc.select_single_node("//NativeDicomModel/DicomAttribute[@tag=\"00100010\"]/PersonName/Ideographic/FamilyName");
+  ASSERT_EQ(utf8.substr(13, 6), node.node().text().as_string());
+
+  node = doc.select_single_node("//NativeDicomModel/DicomAttribute[@tag=\"00100010\"]/PersonName/Ideographic/GivenName");
+  ASSERT_EQ(utf8.substr(20, 6), node.node().text().as_string());
+
+  node = doc.select_single_node("//NativeDicomModel/DicomAttribute[@tag=\"00100010\"]/PersonName/Phonetic/FamilyName");
+  ASSERT_EQ(utf8.substr(27, 9), node.node().text().as_string());
+
+  node = doc.select_single_node("//NativeDicomModel/DicomAttribute[@tag=\"00100010\"]/PersonName/Phonetic/GivenName");
+  ASSERT_EQ(utf8.substr(37), node.node().text().as_string());
+#endif  
+}
+
+
+
+TEST(Toolbox, EncodingsChinese3)
+{
+  // http://dicom.nema.org/MEDICAL/dicom/current/output/chtml/part05/sect_J.3.html
+
+  static const uint8_t chinese[] = {
+    0x57, 0x61, 0x6e, 0x67, 0x5e, 0x58, 0x69, 0x61, 0x6f, 0x44, 0x6f,
+    0x6e, 0x67, 0x3d, 0xcd, 0xf5, 0x5e, 0xd0, 0xa1, 0xb6, 0xab, 0x3d, 0x00
+  };
+
+  ParsedDicomFile dicom(false);
+  dicom.ReplacePlainString(DICOM_TAG_SPECIFIC_CHARACTER_SET, "GB18030");
+  ASSERT_TRUE(dicom.GetDcmtkObject().getDataset()->putAndInsertString
+              (DCM_PatientName, reinterpret_cast<const char*>(chinese), OFBool(true)).good());
+
+  bool hasCodeExtensions;
+  Encoding encoding = dicom.DetectEncoding(hasCodeExtensions);
+  ASSERT_EQ(Encoding_Chinese, encoding);
+  ASSERT_FALSE(hasCodeExtensions);
+
+  std::string value;
+  ASSERT_TRUE(dicom.GetTagValue(value, DICOM_TAG_PATIENT_NAME));
+
+  std::vector<std::string> tokens;
+  Orthanc::Toolbox::TokenizeString(tokens, value, '=');
+  ASSERT_EQ(3u, tokens.size());
+  ASSERT_EQ("Wang^XiaoDong", tokens[0]);
+  ASSERT_TRUE(tokens[2].empty());
+
+  std::vector<std::string> middle;
+  Orthanc::Toolbox::TokenizeString(middle, tokens[1], '^');
+  ASSERT_EQ(2u, middle.size());
+  ASSERT_EQ(3u, middle[0].size());
+  ASSERT_EQ(6u, middle[1].size());
+
+  // CDF5 in GB18030
+  ASSERT_EQ(static_cast<char>(0xe7), middle[0][0]);
+  ASSERT_EQ(static_cast<char>(0x8e), middle[0][1]);
+  ASSERT_EQ(static_cast<char>(0x8b), middle[0][2]);
+
+  // D0A1 in GB18030
+  ASSERT_EQ(static_cast<char>(0xe5), middle[1][0]);
+  ASSERT_EQ(static_cast<char>(0xb0), middle[1][1]);
+  ASSERT_EQ(static_cast<char>(0x8f), middle[1][2]);
+
+  // B6AB in GB18030
+  ASSERT_EQ(static_cast<char>(0xe4), middle[1][3]);
+  ASSERT_EQ(static_cast<char>(0xb8), middle[1][4]);
+  ASSERT_EQ(static_cast<char>(0x9c), middle[1][5]);
+}
+
+
+TEST(Toolbox, EncodingsChinese4)
+{
+  // http://dicom.nema.org/MEDICAL/dicom/current/output/chtml/part05/sect_J.4.html
+
+  static const uint8_t chinese[] = {
+    0x54, 0x68, 0x65, 0x20, 0x66, 0x69, 0x72, 0x73, 0x74, 0x20, 0x6c, 0x69, 0x6e,
+    0x65, 0x20, 0x69, 0x6e, 0x63, 0x6c, 0x75, 0x64, 0x65, 0x73, 0xd6, 0xd0, 0xce,
+    0xc4, 0x2e, 0x0d, 0x0a, 0x54, 0x68, 0x65, 0x20, 0x73, 0x65, 0x63, 0x6f, 0x6e,
+    0x64, 0x20, 0x6c, 0x69, 0x6e, 0x65, 0x20, 0x69, 0x6e, 0x63, 0x6c, 0x75, 0x64,
+    0x65, 0x73, 0xd6, 0xd0, 0xce, 0xc4, 0x2c, 0x20, 0x74, 0x6f, 0x6f, 0x2e, 0x0d,
+    0x0a, 0x54, 0x68, 0x65, 0x20, 0x74, 0x68, 0x69, 0x72, 0x64, 0x20, 0x6c, 0x69,
+    0x6e, 0x65, 0x2e, 0x0d, 0x0a, 0x00
+  };
+
+  static const uint8_t patternRaw[] = {
+    0xe4, 0xb8, 0xad, 0xe6, 0x96, 0x87
+  };
+
+  const std::string pattern(reinterpret_cast<const char*>(patternRaw), sizeof(patternRaw));
+
+  ParsedDicomFile dicom(false);
+  dicom.ReplacePlainString(DICOM_TAG_SPECIFIC_CHARACTER_SET, "GB18030");
+  ASSERT_TRUE(dicom.GetDcmtkObject().getDataset()->putAndInsertString
+              (DCM_PatientComments, reinterpret_cast<const char*>(chinese), OFBool(true)).good());
+
+  bool hasCodeExtensions;
+  Encoding encoding = dicom.DetectEncoding(hasCodeExtensions);
+  ASSERT_EQ(Encoding_Chinese, encoding);
+  ASSERT_FALSE(hasCodeExtensions);
+
+  std::string value;
+  ASSERT_TRUE(dicom.GetTagValue(value, DICOM_TAG_PATIENT_COMMENTS));
+
+  std::vector<std::string> lines;
+  Orthanc::Toolbox::TokenizeString(lines, value, '\n');
+  ASSERT_EQ(4u, lines.size());
+  ASSERT_TRUE(boost::starts_with(lines[0], "The first line includes"));
+  ASSERT_TRUE(boost::ends_with(lines[0], ".\r"));
+  ASSERT_TRUE(lines[0].find(pattern) != std::string::npos);
+  ASSERT_TRUE(boost::starts_with(lines[1], "The second line includes"));
+  ASSERT_TRUE(boost::ends_with(lines[1], ", too.\r"));
+  ASSERT_TRUE(lines[1].find(pattern) != std::string::npos);
+  ASSERT_EQ("The third line.\r", lines[2]);
+  ASSERT_FALSE(lines[1].find(pattern) == std::string::npos);
+  ASSERT_TRUE(lines[3].empty());
+}
+
+
+TEST(Toolbox, EncodingsSimplifiedChinese2)
+{
+  // http://dicom.nema.org/MEDICAL/dicom/current/output/chtml/part05/sect_K.2.html
+
+  static const uint8_t chinese[] = {
+    0x5a, 0x68, 0x61, 0x6e, 0x67, 0x5e, 0x58, 0x69, 0x61, 0x6f, 0x44, 0x6f,
+    0x6e, 0x67, 0x3d, 0x1b, 0x24, 0x29, 0x41, 0xd5, 0xc5, 0x5e, 0x1b, 0x24,
+    0x29, 0x41, 0xd0, 0xa1, 0xb6, 0xab, 0x3d, 0x20, 0x00
+  };
+
+  // echo -n "Zhang^XiaoDong=..." | hexdump -v -e '14/1 "0x%02x, "' -e '"\n"'
+  static const uint8_t utf8[] = {
+    0x5a, 0x68, 0x61, 0x6e, 0x67, 0x5e, 0x58, 0x69, 0x61, 0x6f, 0x44, 0x6f, 0x6e, 0x67,
+    0x3d, 0xe5, 0xbc, 0xa0, 0x5e, 0xe5, 0xb0, 0x8f, 0xe4, 0xb8, 0x9c, 0x3d
+  };
+  
+  ParsedDicomFile dicom(false);
+  dicom.ReplacePlainString(DICOM_TAG_SPECIFIC_CHARACTER_SET, "\\ISO 2022 IR 58");
+  ASSERT_TRUE(dicom.GetDcmtkObject().getDataset()->putAndInsertString
+              (DCM_PatientName, reinterpret_cast<const char*>(chinese), OFBool(true)).good());
+
+  bool hasCodeExtensions;
+  Encoding encoding = dicom.DetectEncoding(hasCodeExtensions);
+  ASSERT_EQ(Encoding_SimplifiedChinese, encoding);
+  ASSERT_TRUE(hasCodeExtensions);
+
+  std::string value;
+  ASSERT_TRUE(dicom.GetTagValue(value, DICOM_TAG_PATIENT_NAME));
+  ASSERT_EQ(value, std::string(reinterpret_cast<const char*>(utf8), sizeof(utf8)));
+}
+
+
+TEST(Toolbox, EncodingsSimplifiedChinese3)
+{
+  // http://dicom.nema.org/MEDICAL/dicom/current/output/chtml/part05/sect_K.2.html
+
+  static const uint8_t chinese[] = {
+    0x31, 0x2e, 0x1b, 0x24, 0x29, 0x41, 0xb5, 0xda, 0xd2, 0xbb, 0xd0, 0xd0, 0xce, 0xc4, 0xd7, 0xd6, 0xa1, 0xa3, 0x0d, 0x0a,
+    0x32, 0x2e, 0x1b, 0x24, 0x29, 0x41, 0xb5, 0xda, 0xb6, 0xfe, 0xd0, 0xd0, 0xce, 0xc4, 0xd7, 0xd6, 0xa1, 0xa3, 0x0d, 0x0a,
+    0x33, 0x2e, 0x1b, 0x24, 0x29, 0x41, 0xb5, 0xda, 0xc8, 0xfd, 0xd0, 0xd0, 0xce, 0xc4, 0xd7, 0xd6, 0xa1, 0xa3, 0x0d, 0x0a, 0x00
+  };
+
+  static const uint8_t line1[] = {
+    0x31, 0x2e, 0xe7, 0xac, 0xac, 0xe4, 0xb8, 0x80, 0xe8, 0xa1, 0x8c, 0xe6, 0x96, 0x87,
+    0xe5, 0xad, 0x97, 0xe3, 0x80, 0x82, '\r'
+  };
+
+  static const uint8_t line2[] = {
+    0x32, 0x2e, 0xe7, 0xac, 0xac, 0xe4, 0xba, 0x8c, 0xe8, 0xa1, 0x8c, 0xe6, 0x96, 0x87,
+    0xe5, 0xad, 0x97, 0xe3, 0x80, 0x82, '\r'
+  };
+
+  static const uint8_t line3[] = {
+    0x33, 0x2e, 0xe7, 0xac, 0xac, 0xe4, 0xb8, 0x89, 0xe8, 0xa1, 0x8c, 0xe6, 0x96, 0x87,
+    0xe5, 0xad, 0x97, 0xe3, 0x80, 0x82, '\r'
+  };
+
+  ParsedDicomFile dicom(false);
+  dicom.ReplacePlainString(DICOM_TAG_SPECIFIC_CHARACTER_SET, "\\ISO 2022 IR 58");
+  ASSERT_TRUE(dicom.GetDcmtkObject().getDataset()->putAndInsertString
+              (DCM_PatientName, reinterpret_cast<const char*>(chinese), OFBool(true)).good());
+
+  bool hasCodeExtensions;
+  Encoding encoding = dicom.DetectEncoding(hasCodeExtensions);
+  ASSERT_EQ(Encoding_SimplifiedChinese, encoding);
+  ASSERT_TRUE(hasCodeExtensions);
+
+  std::string value;
+  ASSERT_TRUE(dicom.GetTagValue(value, DICOM_TAG_PATIENT_NAME));
+
+  std::vector<std::string> lines;
+  Toolbox::TokenizeString(lines, value, '\n');
+  ASSERT_EQ(4u, lines.size());
+  ASSERT_EQ(std::string(reinterpret_cast<const char*>(line1), sizeof(line1)), lines[0]);
+  ASSERT_EQ(std::string(reinterpret_cast<const char*>(line2), sizeof(line2)), lines[1]);
+  ASSERT_EQ(std::string(reinterpret_cast<const char*>(line3), sizeof(line3)), lines[2]);
+  ASSERT_TRUE(lines[3].empty());
+}
+
