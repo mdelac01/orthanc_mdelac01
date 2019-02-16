@@ -2,9 +2,6 @@
 === Orthanc Roadmap ===
 =======================
 
-The wishlist from Orthanc users is available on Trello:
-https://trello.com/b/gcn33tDM/orthanc-wishlist
-
 
 =======
 General
@@ -81,6 +78,15 @@ Long-term
   https://groups.google.com/forum/#!msg/orthanc-users/VZOn8St65jw/s8kg_OHesj0J
 * Support extended association:
   https://groups.google.com/d/msg/orthanc-users/xD4d3mpc6ms/srF7E2goAAAJ
+
+---------
+Encodings
+---------
+
+* Support multiple specific character sets (cf. "SCSH32" in orthanc-tests)
+  - http://dicom.nema.org/medical/dicom/current/output/chtml/part03/sect_C.12.html#sect_C.12.1.1.2
+  - Japanese test: http://dicom.nema.org/MEDICAL/dicom/2017c/output/chtml/part05/sect_H.3.2.html
+* Support Supplementary Kanji set (ISO 2022 IR 159)
 
 
 =======

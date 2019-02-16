@@ -647,6 +647,15 @@ namespace Orthanc
       case Encoding_Chinese:
         return "Chinese";
 
+      case Encoding_Korean:
+        return "Korean";
+
+      case Encoding_JapaneseKanji:
+        return "JapaneseKanji";
+
+      case Encoding_SimplifiedChinese:
+        return "SimplifiedChinese";
+
       default:
         throw OrthancException(ErrorCode_ParameterOutOfRange);
     }
@@ -1200,6 +1209,21 @@ namespace Orthanc
     if (s == "CHINESE")
     {
       return Encoding_Chinese;
+    }
+
+    if (s == "KOREAN")
+    {
+      return Encoding_Korean;
+    }
+
+    if (s == "JAPANESEKANJI")
+    {
+      return Encoding_JapaneseKanji;
+    }
+
+    if (s == "SIMPLIFIEDCHINESE")
+    {
+      return Encoding_SimplifiedChinese;
     }
 
     throw OrthancException(ErrorCode_ParameterOutOfRange);
@@ -1836,11 +1860,13 @@ namespace Orthanc
     {
       encoding = Encoding_Hebrew;
     }
-    else if (s == "ISO_IR 166" || s == "ISO 2022 IR 166")
+    else if (s == "ISO_IR 166" ||
+             s == "ISO 2022 IR 166")
     {
       encoding = Encoding_Thai;
     }
-    else if (s == "ISO_IR 13" || s == "ISO 2022 IR 13")
+    else if (s == "ISO_IR 13" ||
+             s == "ISO 2022 IR 13")
     {
       encoding = Encoding_Japanese;
     }
@@ -1855,18 +1881,22 @@ namespace Orthanc
        **/
       encoding = Encoding_Chinese;
     }
+    else if (s == "ISO 2022 IR 149")
+    {
+      encoding = Encoding_Korean;
+    }
+    else if (s == "ISO 2022 IR 87")
+    {
+      encoding = Encoding_JapaneseKanji;
+    }
+    else if (s == "ISO 2022 IR 58")
+    {
+      encoding = Encoding_SimplifiedChinese;
+    }
     /*
-      else if (s == "ISO 2022 IR 149")
-      {
-      TODO
-      }
       else if (s == "ISO 2022 IR 159")
       {
-      TODO
-      }
-      else if (s == "ISO 2022 IR 87")
-      {
-      TODO
+      TODO - Supplementary Kanji set
       }
     */
     else
@@ -2012,6 +2042,15 @@ namespace Orthanc
 
       case Encoding_Thai:
         return "ISO_IR 166";
+
+      case Encoding_Korean:
+        return "ISO 2022 IR 149";
+
+      case Encoding_JapaneseKanji:
+        return "ISO 2022 IR 87";
+
+      case Encoding_SimplifiedChinese:
+        return "ISO 2022 IR 58";
 
       default:
         throw OrthancException(ErrorCode_ParameterOutOfRange);

@@ -464,55 +464,55 @@ namespace Orthanc
 
       case Encoding_Latin1:
         return "ISO-8859-1";
-        break;
 
       case Encoding_Latin2:
         return "ISO-8859-2";
-        break;
 
       case Encoding_Latin3:
         return "ISO-8859-3";
-        break;
 
       case Encoding_Latin4:
         return "ISO-8859-4";
-        break;
 
       case Encoding_Latin5:
         return "ISO-8859-9";
-        break;
 
       case Encoding_Cyrillic:
         return "ISO-8859-5";
-        break;
 
       case Encoding_Windows1251:
         return "WINDOWS-1251";
-        break;
 
       case Encoding_Arabic:
         return "ISO-8859-6";
-        break;
 
       case Encoding_Greek:
         return "ISO-8859-7";
-        break;
 
       case Encoding_Hebrew:
         return "ISO-8859-8";
-        break;
         
       case Encoding_Japanese:
         return "SHIFT-JIS";
-        break;
 
       case Encoding_Chinese:
         return "GB18030";
-        break;
 
       case Encoding_Thai:
+#if BOOST_LOCALE_WITH_ICU == 1
+        return "tis620.2533";
+#else
         return "TIS620.2533-0";
-        break;
+#endif
+
+      case Encoding_Korean:
+        return "ISO-IR-149";
+
+      case Encoding_JapaneseKanji:
+        return "JIS";
+
+      case Encoding_SimplifiedChinese:
+        return "GB2312";
 
       default:
         throw OrthancException(ErrorCode_NotImplemented);
@@ -522,32 +522,52 @@ namespace Orthanc
 
 
 #if ORTHANC_ENABLE_LOCALE == 1
+  // http://dicom.nema.org/medical/dicom/current/output/chtml/part03/sect_C.12.html#sect_C.12.1.1.2
   std::string Toolbox::ConvertToUtf8(const std::string& source,
-                                     Encoding sourceEncoding)
+                                     Encoding sourceEncoding,
+                                     bool hasCodeExtensions)
   {
     // The "::skip" flag makes boost skip invalid UTF-8
     // characters. This can occur in badly-encoded DICOM files.
     
     try
     {
-      if (sourceEncoding == Encoding_Utf8)
-      {
-        // Already in UTF-8: No conversion is required
-        return boost::locale::conv::utf_to_utf<char>(source, boost::locale::conv::skip);
-      }
-      else if (sourceEncoding == Encoding_Ascii)
+      if (sourceEncoding == Encoding_Ascii)
       {
         return ConvertToAscii(source);
       }
-      else
+      else 
       {
-        const char* encoding = GetBoostLocaleEncoding(sourceEncoding);
-        return boost::locale::conv::to_utf<char>(source, encoding, boost::locale::conv::skip);
+        std::string s;
+        
+        if (sourceEncoding == Encoding_Utf8)
+        {
+          // Already in UTF-8: No conversion is required, but we ensure
+          // the output is correctly encoded
+          s = boost::locale::conv::utf_to_utf<char>(source, boost::locale::conv::skip);
+        }
+        else
+        {
+          const char* encoding = GetBoostLocaleEncoding(sourceEncoding);
+          s = boost::locale::conv::to_utf<char>(source, encoding, boost::locale::conv::skip);
+        }
+
+        if (hasCodeExtensions)
+        {
+          std::string t;
+          RemoveIso2022EscapeSequences(t, s);
+          return t;
+        }
+        else
+        {
+          return s;
+        }        
       }
     }
-    catch (std::runtime_error&)
+    catch (std::runtime_error& e)
     {
       // Bad input string or bad encoding
+      LOG(INFO) << e.what();
       return ConvertToAscii(source);
     }
   }
@@ -1592,6 +1612,182 @@ namespace Orthanc
     VariableFormatter formatter(dictionary);
 
     return boost::regex_replace(source, pattern, formatter);
+  }
+
+
+  namespace Iso2022
+  {
+    /**
+       Returns whether the string s contains a single-byte control message
+       at index i
+    **/
+    static inline bool IsControlMessage1(const std::string& s, size_t i)
+    {
+      if (i < s.size())
+      {
+        char c = s[i];
+        return
+          (c == '\x0f') || // Locking shift zero
+          (c == '\x0e');   // Locking shift one
+      }
+      else
+      {
+        return false;
+      }
+    }
+
+    /**
+       Returns whether the string s contains a double-byte control message
+       at index i
+    **/
+    static inline size_t IsControlMessage2(const std::string& s, size_t i)
+    {
+      if (i + 1 < s.size())
+      {
+        char c1 = s[i];
+        char c2 = s[i + 1];
+        return (c1 == 0x1b) && (
+          (c2 == '\x6e') || // Locking shift two
+          (c2 == '\x6f') || // Locking shift three
+          (c2 == '\x4e') || // Single shift two (alt)
+          (c2 == '\x4f') || // Single shift three (alt)
+          (c2 == '\x7c') || // Locking shift three right
+          (c2 == '\x7d') || // Locking shift two right
+          (c2 == '\x7e')    // Locking shift one right
+          );
+      }
+      else
+      {
+        return false;
+      }
+    }
+
+    /**
+       Returns whether the string s contains a triple-byte control message
+       at index i
+    **/
+    static inline size_t IsControlMessage3(const std::string& s, size_t i)
+    {
+      if (i + 2 < s.size())
+      {
+        char c1 = s[i];
+        char c2 = s[i + 1];
+        char c3 = s[i + 2];
+        return ((c1 == '\x8e' && c2 == 0x1b && c3 == '\x4e') ||
+                (c1 == '\x8f' && c2 == 0x1b && c3 == '\x4f'));
+      }
+      else
+      {
+        return false;
+      }
+    }
+
+    /**
+       This function returns true if the index i in the supplied string s:
+       - is valid
+       - contains the c character
+       This function returns false otherwise.
+    **/
+    static inline bool TestCharValue(
+      const std::string& s, size_t i, char c)
+    {
+      if (i < s.size())
+        return s[i] == c;
+      else
+        return false;
+    }
+
+    /**
+       This function returns true if the index i in the supplied string s:
+       - is valid
+       - has a c character that is >= cMin and <= cMax (included)
+       This function returns false otherwise.
+    **/
+    static inline bool TestCharRange(
+      const std::string& s, size_t i, char cMin, char cMax)
+    {
+      if (i < s.size())
+        return (s[i] >= cMin) && (s[i] <= cMax);
+      else
+        return false;
+    }
+
+    /**
+       This function returns the total length in bytes of the escape sequence
+       located in string s at index i, if there is one, or 0 otherwise.
+    **/
+    static inline size_t GetEscapeSequenceLength(const std::string& s, size_t i)
+    {
+      if (TestCharValue(s, i, 0x1b))
+      {
+        size_t j = i+1;
+
+        // advance reading cursor while we are in a sequence 
+        while (TestCharRange(s, j, '\x20', '\x2f'))
+          ++j;
+
+        // check there is a valid termination byte AND we're long enough (there
+        // must be at least one byte between 0x20 and 0x2f
+        if (TestCharRange(s, j, '\x30', '\x7f') && (j - i) >= 2)
+          return j - i + 1;
+        else
+          return 0;
+      }
+      else
+        return 0;
+    }
+  }
+
+  
+
+  /**
+     This function will strip all ISO/IEC 2022 control codes and escape
+     sequences.
+     Please see https://en.wikipedia.org/wiki/ISO/IEC_2022 (as of 2019-02)
+     for a list of those.
+
+     Please note that this operation is potentially destructive, because
+     it removes the character set information from the byte stream.
+
+     However, in the case where the encoding is unique, then suppressing
+     the escape sequences allows to provide us with a clean string after
+     conversion to utf-8 with boost.
+  **/
+  void Toolbox::RemoveIso2022EscapeSequences(std::string& dest, const std::string& src)
+  {
+    // we need AT MOST the same size as the source string in the output
+    dest.clear();
+    if (dest.capacity() < src.size())
+      dest.reserve(src.size());
+
+    size_t i = 0;
+
+    // uint8_t view to the string
+    while (i < src.size())
+    {
+      size_t j = i;
+
+      // The i index will only be incremented if a message is detected
+      // in that case, the message is skipped and the index is set to the
+      // next position to read
+      if (Iso2022::IsControlMessage1(src, i))
+        i += 1;
+      else if (Iso2022::IsControlMessage2(src, i))
+        i += 2;
+      else if (Iso2022::IsControlMessage3(src, i))
+        i += 3;
+      else
+        i += Iso2022::GetEscapeSequenceLength(src, i);
+
+      // if the index was NOT incremented, this means there was no message at
+      // this location: we then may copy the character at this index and 
+      // increment the index to point to the next read position
+      if (j == i)
+      {
+        dest.push_back(src[i]);
+        i++;
+      }
+    }
   }
 }
 
