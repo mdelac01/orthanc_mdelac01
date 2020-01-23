@@ -91,6 +91,91 @@ public:
 
 
 
+class OrthancStorageCommitmentRequestHandler : public IStorageCommitmentRequestHandler
+{
+private:
+  ServerContext& server_;
+
+  // TODO - Remove this
+  static void Toto(std::string* t, std::string* remotec)
+  {
+    try
+    {
+      std::auto_ptr<std::string> tt(t);
+      std::auto_ptr<std::string> remote(remotec);
+    
+      printf("Sleeping\n");
+      boost::this_thread::sleep(boost::posix_time::milliseconds(100));
+      printf("Connect back\n");
+
+      RemoteModalityParameters p;
+
+      if (*remote == "ORTHANC")
+      {
+        p = RemoteModalityParameters("ORTHANC", "localhost", 4242, ModalityManufacturer_Generic);
+      }
+      else
+      {
+        p = RemoteModalityParameters("STGCMTSCU", "localhost", 11114, ModalityManufacturer_Generic);
+      }
+        
+      DicomUserConnection scu("ORTHANC", p);
+
+      std::vector<std::string> a, b, c, d;
+      a.push_back("a");  b.push_back("b");
+      a.push_back("c");  b.push_back("d");
+    
+      scu.ReportStorageCommitment(tt->c_str(), a, b, c, d);
+      //scu.ReportStorageCommitment(tt->c_str(), a, b, a, b);
+    }
+    catch (OrthancException& e)
+    {
+      LOG(ERROR) << "EXCEPTION: " << e.What();
+    }
+
+    /**
+     * "After the N-EVENT-REPORT has been sent, the Transaction UID is
+     * no longer active and shall not be reused for other
+     * transactions."
+     * http://dicom.nema.org/medical/dicom/2019a/output/chtml/part04/sect_J.3.3.html
+     **/
+  }
+  
+public:
+  OrthancStorageCommitmentRequestHandler(ServerContext& context) :
+    server_(context)
+  {
+  }
+
+  virtual void HandleRequest(const std::string& transactionUid,
+                             const std::vector<std::string>& referencedSopClassUids,
+                             const std::vector<std::string>& referencedSopInstanceUids,
+                             const std::string& remoteIp,
+                             const std::string& remoteAet,
+                             const std::string& calledAet)
+  {
+    // TODO - Enqueue a Storage commitment job
+
+    boost::thread t(Toto, new std::string(transactionUid), new std::string(remoteAet));
+
+    printf("HANDLE REQUEST\n");
+  }
+
+  virtual void HandleReport(const std::string& transactionUid,
+                            const std::vector<std::string>& successSopClassUids,
+                            const std::vector<std::string>& successSopInstanceUids,
+                            const std::vector<std::string>& failedSopClassUids,
+                            const std::vector<std::string>& failedSopInstanceUids,
+                            const std::string& remoteIp,
+                            const std::string& remoteAet,
+                            const std::string& calledAet)
+  {
+    printf("HANDLE REPORT\n");
+  }
+};
+
+
+
 class ModalitiesFromConfiguration : public DicomServer::IRemoteModalities
 {
 public:
@@ -113,7 +198,8 @@ public:
 class MyDicomServerFactory : 
   public IStoreRequestHandlerFactory,
   public IFindRequestHandlerFactory, 
-  public IMoveRequestHandlerFactory
+  public IMoveRequestHandlerFactory, 
+  public IStorageCommitmentRequestHandlerFactory
 {
 private:
   ServerContext& context_;
@@ -164,6 +250,11 @@ public:
   virtual IMoveRequestHandler* ConstructMoveRequestHandler()
   {
     return new OrthancMoveRequestHandler(context_);
+  }
+
+  virtual IStorageCommitmentRequestHandler* ConstructStorageCommitmentRequestHandler()
+  {
+    return new OrthancStorageCommitmentRequestHandler(context_);
   }
 
   void Done()
@@ -672,6 +763,7 @@ static void PrintErrors(const char* path)
     PrintErrorCode(ErrorCode_CannotOrderSlices, "Unable to order the slices of the series");
     PrintErrorCode(ErrorCode_NoWorklistHandler, "No request handler factory for DICOM C-Find Modality SCP");
     PrintErrorCode(ErrorCode_AlreadyExistingTag, "Cannot override the value of a tag that already exists");
+    PrintErrorCode(ErrorCode_NoStorageCommitmentHandler, "No request handler factory for DICOM N-ACTION SCP (storage commitment)");
     PrintErrorCode(ErrorCode_UnsupportedMediaType, "Unsupported media type");
   }
 
@@ -966,6 +1058,7 @@ static bool StartDicomServer(ServerContext& context,
     dicomServer.SetStoreRequestHandlerFactory(serverFactory);
     dicomServer.SetMoveRequestHandlerFactory(serverFactory);
     dicomServer.SetFindRequestHandlerFactory(serverFactory);
+    dicomServer.SetStorageCommitmentRequestHandlerFactory(serverFactory);
 
     {
       OrthancConfiguration::ReaderLock lock;
