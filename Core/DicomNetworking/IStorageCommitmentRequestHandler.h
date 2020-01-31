@@ -2,7 +2,7 @@
  * Orthanc - A Lightweight, RESTful DICOM Store
  * Copyright (C) 2012-2016 Sebastien Jodogne, Medical Physics
  * Department, University Hospital of Liege, Belgium
- * Copyright (C) 2017-2020 Osimis S.A., Belgium
+ * Copyright (C) 2017-2019 Osimis S.A., Belgium
  *
  * This program is free software: you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -33,53 +33,33 @@
 
 #pragma once
 
-#include "../DicomServer.h"
-#include "../../MultiThreading/IRunnableBySteps.h"
-
-#include <dcmtk/dcmnet/dimse.h>
+#include <boost/noncopyable.hpp>
+#include <string>
+#include <vector>
 
 namespace Orthanc
 {
-  namespace Internals
+  class IStorageCommitmentRequestHandler : public boost::noncopyable
   {
-    OFCondition AssociationCleanup(T_ASC_Association *assoc);
-
-    class CommandDispatcher : public IRunnableBySteps
+  public:
+    virtual ~IStorageCommitmentRequestHandler()
     {
-    private:
-      uint32_t associationTimeout_;
-      uint32_t elapsedTimeSinceLastCommand_;
-      const DicomServer& server_;
-      T_ASC_Association* assoc_;
-      std::string remoteIp_;
-      std::string remoteAet_;
-      std::string calledAet_;
-      IApplicationEntityFilter* filter_;
+    }
 
-      OFCondition NActionScp(T_DIMSE_Message* msg, 
-                             T_ASC_PresentationContextID presID);
+    virtual void HandleRequest(const std::string& transactionUid,
+                               const std::vector<std::string>& sopClassUids,
+                               const std::vector<std::string>& sopInstanceUids,
+                               const std::string& remoteIp,
+                               const std::string& remoteAet,
+                               const std::string& calledAet) = 0;
 
-      OFCondition NEventReportScp(T_DIMSE_Message* msg, 
-                                  T_ASC_PresentationContextID presID);
-      
-    public:
-      CommandDispatcher(const DicomServer& server,
-                        T_ASC_Association* assoc,
-                        const std::string& remoteIp,
-                        const std::string& remoteAet,
-                        const std::string& calledAet,
-                        IApplicationEntityFilter* filter);
-
-      virtual ~CommandDispatcher();
-
-      virtual bool Step();
-    };
-
-    CommandDispatcher* AcceptAssociation(const DicomServer& server, 
-                                         T_ASC_Network *net);
-
-    OFCondition EchoScp(T_ASC_Association* assoc, 
-                        T_DIMSE_Message* msg, 
-                        T_ASC_PresentationContextID presID);
-  }
+    virtual void HandleReport(const std::string& transactionUid,
+                              const std::vector<std::string>& successSopClassUids,
+                              const std::vector<std::string>& successSopInstanceUids,
+                              const std::vector<std::string>& failedSopClassUids,
+                              const std::vector<std::string>& failedSopInstanceUids,
+                              const std::string& remoteIp,
+                              const std::string& remoteAet,
+                              const std::string& calledAet) = 0;
+  };
 }
