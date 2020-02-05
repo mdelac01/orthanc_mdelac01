@@ -33,59 +33,61 @@
 
 #pragma once
 
-#include "JobsRegistry.h"
+#include "../../Core/DicomNetworking/RemoteModalityParameters.h"
+#include "../../Core/JobsEngine/SetOfCommandsJob.h"
 
-#include <boost/thread.hpp>
+#include <list>
 
 namespace Orthanc
 {
-  class JobsEngine : public boost::noncopyable
+  class ServerContext;
+  
+  class StorageCommitmentScpJob : public SetOfCommandsJob
   {
   private:
-    enum State
-    {
-      State_Setup,
-      State_Running,
-      State_Stopping,
-      State_Done
-    };
+    class LookupCommand;    
+    class AnswerCommand;
+    class Unserializer;
 
-    boost::mutex                 stateMutex_;
-    State                        state_;
-    std::auto_ptr<JobsRegistry>  registry_;
-    boost::thread                retryHandler_;
-    unsigned int                 threadSleep_;
-    std::vector<boost::thread*>  workers_;
+    ServerContext&            context_;
+    bool                      ready_;
+    std::string               transactionUid_;
+    RemoteModalityParameters  remoteModality_;
+    std::string               calledAet_;
+    std::list<std::string>    successSopClassUids_;
+    std::list<std::string>    successSopInstanceUids_;
+    std::list<std::string>    failedSopClassUids_;
+    std::list<std::string>    failedSopInstanceUids_;
 
-    bool IsRunning();
+    void LookupInstance(const std::string& sopClassUid,
+                        const std::string& sopInstanceUid);
+    void Answer();
     
-    bool ExecuteStep(JobsRegistry::RunningJob& running,
-                     size_t workerIndex);
-    
-    static void RetryHandler(JobsEngine* engine);
-
-    static void Worker(JobsEngine* engine,
-                       size_t workerIndex);
-
   public:
-    JobsEngine(size_t maxCompletedJobs);
+    StorageCommitmentScpJob(ServerContext& context,
+                            const std::string& transactionUid,
+                            const std::string& remoteAet,
+                            const std::string& calledAet);
 
-    ~JobsEngine();
+    StorageCommitmentScpJob(ServerContext& context,
+                            const Json::Value& serialized);
 
-    JobsRegistry& GetRegistry();
+    void AddInstance(const std::string& sopClassUid,
+                     const std::string& sopInstanceUid);
 
-    void LoadRegistryFromJson(IJobUnserializer& unserializer,
-                              const Json::Value& serialized);
+    void MarkAsReady();
 
-    void LoadRegistryFromString(IJobUnserializer& unserializer,
-                                const std::string& serialized);
+    virtual void Stop(JobStopReason reason) ORTHANC_OVERRIDE
+    {
+    }
 
-    void SetWorkersCount(size_t count);
+    virtual void GetJobType(std::string& target) ORTHANC_OVERRIDE
+    {
+      target = "StorageCommitmentScp";
+    }
 
-    void SetThreadSleep(unsigned int sleep);
+    virtual void GetPublicContent(Json::Value& value) ORTHANC_OVERRIDE;
 
-    void Start();
-
-    void Stop();
+    virtual bool Serialize(Json::Value& target) ORTHANC_OVERRIDE;
   };
 }
