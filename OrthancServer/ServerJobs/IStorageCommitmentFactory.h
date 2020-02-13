@@ -33,53 +33,34 @@
 
 #pragma once
 
-#if ORTHANC_ENABLE_PLUGINS == 1
-
-#include "../../Core/JobsEngine/IJob.h"
-#include "../Include/orthanc/OrthancCPlugin.h"
+#include <string>
+#include <vector>
 
 namespace Orthanc
 {
-  class PluginsJob : public IJob
+  class IStorageCommitmentFactory : public boost::noncopyable
   {
-  private:
-    _OrthancPluginCreateJob  parameters_;
-    std::string              type_;
-
   public:
-    PluginsJob(const _OrthancPluginCreateJob& parameters);
+    class ILookupHandler : public boost::noncopyable
+    {
+    public:
+      virtual ~ILookupHandler()
+      {
+      }
 
-    virtual ~PluginsJob();
+      virtual StorageCommitmentFailureReason Lookup(const std::string& sopClassUid,
+                                                    const std::string& sopInstanceUid) = 0;
+    };
 
-    virtual void Start()
+    virtual ~IStorageCommitmentFactory()
     {
     }
-    
-    virtual JobStepResult Step(const std::string& jobId) ORTHANC_OVERRIDE;
 
-    virtual void Reset();
-
-    virtual void Stop(JobStopReason reason);
-
-    virtual float GetProgress();
-
-    virtual void GetJobType(std::string& target)
-    {
-      target = type_;
-    }
-    
-    virtual void GetPublicContent(Json::Value& value);
-
-    virtual bool Serialize(Json::Value& value);
-
-    virtual bool GetOutput(std::string& output,
-                           MimeType& mime,
-                           const std::string& key)
-    {
-      // TODO
-      return false;
-    }
+    virtual ILookupHandler* CreateStorageCommitment(const std::string& jobId,
+                                                    const std::string& transactionUid,
+                                                    const std::vector<std::string>& sopClassUids,
+                                                    const std::vector<std::string>& sopInstanceUids,
+                                                    const std::string& remoteAet,
+                                                    const std::string& calledAet) = 0;
   };
 }
-
-#endif
