@@ -33,53 +33,33 @@
 
 #pragma once
 
-#if ORTHANC_ENABLE_PLUGINS == 1
-
-#include "../../Core/JobsEngine/IJob.h"
-#include "../Include/orthanc/OrthancCPlugin.h"
+#include <boost/noncopyable.hpp>
+#include <string>
+#include <vector>
 
 namespace Orthanc
 {
-  class PluginsJob : public IJob
+  class IStorageCommitmentRequestHandler : public boost::noncopyable
   {
-  private:
-    _OrthancPluginCreateJob  parameters_;
-    std::string              type_;
-
   public:
-    PluginsJob(const _OrthancPluginCreateJob& parameters);
-
-    virtual ~PluginsJob();
-
-    virtual void Start()
+    virtual ~IStorageCommitmentRequestHandler()
     {
     }
-    
-    virtual JobStepResult Step(const std::string& jobId) ORTHANC_OVERRIDE;
 
-    virtual void Reset();
+    virtual void HandleRequest(const std::string& transactionUid,
+                               const std::vector<std::string>& sopClassUids,
+                               const std::vector<std::string>& sopInstanceUids,
+                               const std::string& remoteIp,
+                               const std::string& remoteAet,
+                               const std::string& calledAet) = 0;
 
-    virtual void Stop(JobStopReason reason);
-
-    virtual float GetProgress();
-
-    virtual void GetJobType(std::string& target)
-    {
-      target = type_;
-    }
-    
-    virtual void GetPublicContent(Json::Value& value);
-
-    virtual bool Serialize(Json::Value& value);
-
-    virtual bool GetOutput(std::string& output,
-                           MimeType& mime,
-                           const std::string& key)
-    {
-      // TODO
-      return false;
-    }
+    virtual void HandleReport(const std::string& transactionUid,
+                              const std::vector<std::string>& successSopClassUids,
+                              const std::vector<std::string>& successSopInstanceUids,
+                              const std::vector<std::string>& failedSopClassUids,
+                              const std::vector<std::string>& failedSopInstanceUids,
+                              const std::string& remoteIp,
+                              const std::string& remoteAet,
+                              const std::string& calledAet) = 0;
   };
 }
-
-#endif

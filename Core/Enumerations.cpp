@@ -366,6 +366,9 @@ namespace Orthanc
       case ErrorCode_AlreadyExistingTag:
         return "Cannot override the value of a tag that already exists";
 
+      case ErrorCode_NoStorageCommitmentHandler:
+        return "No request handler factory for DICOM N-ACTION SCP (storage commitment)";
+
       case ErrorCode_UnsupportedMediaType:
         return "Unsupported media type";
 
@@ -858,6 +861,14 @@ namespace Orthanc
 
       case DicomRequestType_Store:
         return "Store";
+        break;
+
+      case DicomRequestType_NAction:
+        return "N-ACTION";
+        break;
+
+      case DicomRequestType_NEventReport:
+        return "N-EVENT-REPORT";
         break;
 
       default: 
