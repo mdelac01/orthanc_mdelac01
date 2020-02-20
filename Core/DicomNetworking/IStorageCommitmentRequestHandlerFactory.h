@@ -33,53 +33,17 @@
 
 #pragma once
 
-#if ORTHANC_ENABLE_PLUGINS == 1
-
-#include "../../Core/JobsEngine/IJob.h"
-#include "../Include/orthanc/OrthancCPlugin.h"
+#include "IStorageCommitmentRequestHandler.h"
 
 namespace Orthanc
 {
-  class PluginsJob : public IJob
+  class IStorageCommitmentRequestHandlerFactory : public boost::noncopyable
   {
-  private:
-    _OrthancPluginCreateJob  parameters_;
-    std::string              type_;
-
   public:
-    PluginsJob(const _OrthancPluginCreateJob& parameters);
-
-    virtual ~PluginsJob();
-
-    virtual void Start()
+    virtual ~IStorageCommitmentRequestHandlerFactory()
     {
     }
-    
-    virtual JobStepResult Step(const std::string& jobId) ORTHANC_OVERRIDE;
 
-    virtual void Reset();
-
-    virtual void Stop(JobStopReason reason);
-
-    virtual float GetProgress();
-
-    virtual void GetJobType(std::string& target)
-    {
-      target = type_;
-    }
-    
-    virtual void GetPublicContent(Json::Value& value);
-
-    virtual bool Serialize(Json::Value& value);
-
-    virtual bool GetOutput(std::string& output,
-                           MimeType& mime,
-                           const std::string& key)
-    {
-      // TODO
-      return false;
-    }
+    virtual IStorageCommitmentRequestHandler* ConstructStorageCommitmentRequestHandler() = 0;
   };
 }
-
-#endif

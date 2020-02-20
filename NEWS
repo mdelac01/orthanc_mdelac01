@@ -1,6 +1,11 @@
 Pending changes in the mainline
 ===============================
 
+General
+-------
+
+* Support of DICOM storage commitment
+
 REST API
 --------
 
@@ -15,6 +20,7 @@ Plugins
 -------
 
 * New sample plugin: "ConnectivityChecks"
+* New primitives to handle storage commitment SCP by plugins
 
 Lua
 ---
