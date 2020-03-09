@@ -37,6 +37,7 @@
 #include "LuaScripting.h"
 #include "OrthancHttpHandler.h"
 #include "ServerIndex.h"
+#include "ServerJobs/IStorageCommitmentFactory.h"
 
 #include "../Core/Cache/MemoryCache.h"
 
@@ -60,7 +61,9 @@ namespace Orthanc
    * filesystem (including compression), as well as the index of the
    * DICOM store. It implements the required locking mechanisms.
    **/
-  class ServerContext : private JobsRegistry::IObserver
+  class ServerContext :
+    public IStorageCommitmentFactory,
+    private JobsRegistry::IObserver
   {
   public:
     class ILookupVisitor : public boost::noncopyable
@@ -419,5 +422,13 @@ namespace Orthanc
     {
       return isExecuteLuaEnabled_;
     }
+
+    virtual IStorageCommitmentFactory::ILookupHandler*
+    CreateStorageCommitment(const std::string& jobId,
+                            const std::string& transactionUid,
+                            const std::vector<std::string>& sopClassUids,
+                            const std::vector<std::string>& sopInstanceUids,
+                            const std::string& remoteAet,
+                            const std::string& calledAet) ORTHANC_OVERRIDE;
   };
 }

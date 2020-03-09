@@ -103,6 +103,7 @@ set(ORTHANC_SERVER_SOURCES
   OrthancServer/ServerJobs/OrthancPeerStoreJob.cpp
   OrthancServer/ServerJobs/ResourceModificationJob.cpp
   OrthancServer/ServerJobs/SplitStudyJob.cpp
+  OrthancServer/ServerJobs/StorageCommitmentScpJob.cpp
   OrthancServer/ServerToolbox.cpp
   OrthancServer/SliceOrdering.cpp
   )
@@ -483,8 +484,12 @@ if (ENABLE_PLUGINS AND BUILD_CONNECTIVITY_CHECKS)
       )
   endif()
 
-  externalproject_add(ConnectivityChecksProject
+  externalproject_add(ConnectivityChecks
     SOURCE_DIR "${ORTHANC_ROOT}/Plugins/Samples/ConnectivityChecks"
+
+    # We explicitly provide a build directory, in order to avoid paths
+    # that are too long on our Visual Studio 2008 CIS
+    BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/ConnectivityChecks-build"
 
     CMAKE_ARGS
     -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}
