@@ -242,7 +242,8 @@ namespace Orthanc
     isJobsEngineUnserialized_(false),
     metricsRegistry_(new MetricsRegistry),
     isHttpServerSecure_(true),
-    isExecuteLuaEnabled_(false)
+    isExecuteLuaEnabled_(false),
+    overwriteInstances_(false)
   {
     {
       OrthancConfiguration::ReaderLock lock;
@@ -339,8 +340,28 @@ namespace Orthanc
 
 
   StoreStatus ServerContext::Store(std::string& resultPublicId,
-                                   DicomInstanceToStore& dicom)
+                                   DicomInstanceToStore& dicom,
+                                   StoreInstanceMode mode)
   {
+    bool overwrite;
+    switch (mode)
+    {
+      case StoreInstanceMode_Default:
+        overwrite = overwriteInstances_;
+        break;
+        
+      case StoreInstanceMode_OverwriteDuplicate:
+        overwrite = true;
+        break;
+        
+      case StoreInstanceMode_IgnoreDuplicate:
+        overwrite = false;
+        break;
+
+      default:
+        throw OrthancException(ErrorCode_ParameterOutOfRange);
+    }    
+    
     try
     {
       MetricsRegistry::Timer timer(GetMetricsRegistry(), "orthanc_store_dicom_duration_ms");
@@ -404,7 +425,8 @@ namespace Orthanc
 
       typedef std::map<MetadataType, std::string>  InstanceMetadata;
       InstanceMetadata  instanceMetadata;
-      StoreStatus status = index_.Store(instanceMetadata, dicom, attachments);
+      StoreStatus status = index_.Store(
+        instanceMetadata, dicom, attachments, overwrite);
 
       // Only keep the metadata for the "instance" level
       dicom.GetMetadata().clear();

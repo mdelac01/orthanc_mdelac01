@@ -79,10 +79,6 @@ namespace Orthanc
     bool ProposeStorageClass(const std::string& sopClassUid,
                              const std::set<DicomTransferSyntax>& syntaxes);
     
-    bool LookupPresentationContext(uint8_t& presentationContextId,
-                                   const std::string& sopClassUid,
-                                   DicomTransferSyntax transferSyntax);
-        
   public:
     DicomStoreUserConnection(const DicomAssociationParameters& params);
     
@@ -124,6 +120,10 @@ namespace Orthanc
     void PrepareStorageClass(const std::string& sopClassUid,
                              DicomTransferSyntax syntax);
 
+    bool LookupPresentationContext(uint8_t& presentationContextId,
+                                   const std::string& sopClassUid,
+                                   DicomTransferSyntax transferSyntax);
+        
     bool NegotiatePresentationContext(uint8_t& presentationContextId,
                                       const std::string& sopClassUid,
                                       DicomTransferSyntax transferSyntax);
