@@ -1314,7 +1314,7 @@ namespace
       DicomInstanceToStore toStore;
       toStore.SetParsedDicomFile(dicom);
 
-      return (context_->Store(id, toStore) == StoreStatus_Success);
+      return (context_->Store(id, toStore, StoreInstanceMode_Default) == StoreStatus_Success);
     }
   };
 }

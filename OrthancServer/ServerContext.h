@@ -221,6 +221,7 @@ namespace Orthanc
     std::unique_ptr<MetricsRegistry>  metricsRegistry_;
     bool isHttpServerSecure_;
     bool isExecuteLuaEnabled_;
+    bool overwriteInstances_;
 
     std::unique_ptr<StorageCommitmentReports>  storageCommitmentReports_;
 
@@ -275,7 +276,8 @@ namespace Orthanc
                        size_t size);
 
     StoreStatus Store(std::string& resultPublicId,
-                      DicomInstanceToStore& dicom);
+                      DicomInstanceToStore& dicom,
+                      StoreInstanceMode mode);
 
     void AnswerAttachment(RestApiOutput& output,
                           const std::string& resourceId,
@@ -426,6 +428,16 @@ namespace Orthanc
       return isExecuteLuaEnabled_;
     }
 
+    void SetOverwriteInstances(bool overwrite)
+    {
+      overwriteInstances_ = overwrite;
+    }
+    
+    bool IsOverwriteInstances() const
+    {
+      return overwriteInstances_;
+    }
+    
     virtual IStorageCommitmentFactory::ILookupHandler*
     CreateStorageCommitment(const std::string& jobId,
                             const std::string& transactionUid,
