@@ -140,7 +140,7 @@ namespace Orthanc
     }    
 
     std::string publicId;
-    StoreStatus status = context.Store(publicId, toStore);
+    StoreStatus status = context.Store(publicId, toStore, StoreInstanceMode_Default);
 
     OrthancRestApi::GetApi(call).AnswerStoredInstance(call, toStore, status);
   }
