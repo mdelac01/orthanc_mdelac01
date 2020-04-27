@@ -81,11 +81,6 @@ namespace Orthanc
     // Return "false" if there is not enough room remaining in the association
     bool ProposeStorageClass(const std::string& sopClassUid,
                              const std::set<DicomTransferSyntax>& syntaxes);
-        
-    // Should only be used if transcoding
-    bool LookupPresentationContext(uint8_t& presentationContextId,
-                                   const std::string& sopClassUid,
-                                   DicomTransferSyntax transferSyntax);
 
   public:
     DicomStoreUserConnection(const DicomAssociationParameters& params);
@@ -128,6 +123,12 @@ namespace Orthanc
     void PrepareStorageClass(const std::string& sopClassUid,
                              DicomTransferSyntax syntax);
 
+    // Should only be used if transcoding
+    // TODO => to private
+    bool LookupPresentationContext(uint8_t& presentationContextId,
+                                   const std::string& sopClassUid,
+                                   DicomTransferSyntax transferSyntax);
+        
     // TODO => to private
     bool NegotiatePresentationContext(uint8_t& presentationContextId,
                                       const std::string& sopClassUid,
