@@ -33,22 +33,54 @@
 
 #pragma once
 
-#include <list>
-#include <string>
+#include "../Enumerations.h"
+
 #include <boost/noncopyable.hpp>
+#include <set>
+
+class DcmFileFormat;
 
 namespace Orthanc
 {
-  class IServerCommand : public boost::noncopyable
+  /**
+   * WARNING: This class might be called from several threads at
+   * once. Make sure to implement proper locking.
+   **/
+  
+  class IDicomTranscoder : public boost::noncopyable
   {
   public:
-    typedef std::list<std::string>  ListOfStrings;
-
-    virtual ~IServerCommand()
+    virtual ~IDicomTranscoder()
     {
     }
 
-    virtual bool Apply(ListOfStrings& outputs,
-                       const ListOfStrings& inputs) = 0;
+    virtual bool TranscodeToBuffer(std::string& target,
+                                   bool& hasSopInstanceUidChanged /* out */,
+                                   const void* buffer,
+                                   size_t size,
+                                   const std::set<DicomTransferSyntax>& allowedSyntaxes,
+                                   bool allowNewSopInstanceUid) = 0;
+
+    /**
+     * Transcoding flavor that creates a new parsed DICOM file. A
+     * "std::set<>" is used to give the possible plugin the
+     * possibility to do a single parsing for all the possible
+     * transfer syntaxes.
+     **/
+    virtual DcmFileFormat* TranscodeToParsed(bool& hasSopInstanceUidChanged /* out */,
+                                             const void* buffer,
+                                             size_t size,
+                                             const std::set<DicomTransferSyntax>& allowedSyntaxes,
+                                             bool allowNewSopInstanceUid) = 0;
+    
+    virtual bool HasInplaceTranscode() const = 0;
+
+    /**
+     * In-place transcoding. This method is preferred for C-STORE.
+     **/
+    virtual bool InplaceTranscode(bool& hasSopInstanceUidChanged /* out */,
+                                  DcmFileFormat& dicom,
+                                  const std::set<DicomTransferSyntax>& allowedSyntaxes,
+                                  bool allowNewSopInstanceUid) = 0;
   };
 }
