@@ -40,6 +40,7 @@
 #include "ServerJobs/IStorageCommitmentFactory.h"
 
 #include "../Core/Cache/MemoryCache.h"
+#include "../Core/DicomParsing/IDicomTranscoder.h"
 
 
 namespace Orthanc
@@ -221,8 +222,12 @@ namespace Orthanc
     std::unique_ptr<MetricsRegistry>  metricsRegistry_;
     bool isHttpServerSecure_;
     bool isExecuteLuaEnabled_;
+    bool overwriteInstances_;
 
     std::unique_ptr<StorageCommitmentReports>  storageCommitmentReports_;
+
+    bool transcodingEnabled_;
+    std::unique_ptr<IDicomTranscoder>  dcmtkTranscoder_;
 
   public:
     class DicomCacheLocker : public boost::noncopyable
@@ -275,7 +280,8 @@ namespace Orthanc
                        size_t size);
 
     StoreStatus Store(std::string& resultPublicId,
-                      DicomInstanceToStore& dicom);
+                      DicomInstanceToStore& dicom,
+                      StoreInstanceMode mode);
 
     void AnswerAttachment(RestApiOutput& output,
                           const std::string& resourceId,
@@ -426,6 +432,16 @@ namespace Orthanc
       return isExecuteLuaEnabled_;
     }
 
+    void SetOverwriteInstances(bool overwrite)
+    {
+      overwriteInstances_ = overwrite;
+    }
+    
+    bool IsOverwriteInstances() const
+    {
+      return overwriteInstances_;
+    }
+    
     virtual IStorageCommitmentFactory::ILookupHandler*
     CreateStorageCommitment(const std::string& jobId,
                             const std::string& transactionUid,
@@ -438,5 +454,20 @@ namespace Orthanc
     {
       return *storageCommitmentReports_;
     }
+
+    void StoreWithTranscoding(std::string& sopClassUid,
+                              std::string& sopInstanceUid,
+                              DicomStoreUserConnection& connection,
+                              const std::string& dicom,
+                              bool hasMoveOriginator,
+                              const std::string& moveOriginatorAet,
+                              uint16_t moveOriginatorId);
+
+    // This method can be used even if "TranscodingEnabled" is set to "false"
+    bool TranscodeMemoryBuffer(std::string& target,
+                               bool& hasSopInstanceUidChanged,
+                               const std::string& source,
+                               const std::set<DicomTransferSyntax>& allowedSyntaxes,
+                               bool allowNewSopInstanceUid);
   };
 }
