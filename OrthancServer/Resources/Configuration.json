@@ -194,7 +194,6 @@
      *   in outgoing C-Find requests originating from Orthanc),
      * - "GenericNoUniversalWildcard" (to replace "*" by "" in all fields
      *   in outgoing C-Find SCU requests originating from Orthanc),
-     * - "StoreScp" (storescp tool from DCMTK),
      * - "Vitrea",
      * - "GE" (Enterprise Archive, MRI consoles and Advantage Workstation
      *   from GE Healthcare).
@@ -222,6 +221,8 @@
      * "EnableTranscoding" is set to "true".
      *
      * By default, all "Allow*" options are true.
+     * "AllowStorageCommitment" is actually an alias for 
+     * "AllowNAction" & "AllowEventReport".
      **/
     //"untrusted" : {
     //  "AET" : "ORTHANC",
